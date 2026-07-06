@@ -29,10 +29,14 @@ Set-ExecutionPolicy RemoteSigned
 ```env
 OPENAI_API_KEY=
 OPENAI_BASE_URL=https://api.deepseek.com
-OPENAI_MODEL=deepseek-v4-flash
+MODEL_FAST=deepseek-v4-flash
+MODEL_ANALYSIS=deepseek-v4-pro
+MODEL_REPORT=deepseek-v4-pro
 ```
 
-正式使用 GPT 时，将 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL` 改为对应服务商配置即可。
+三个模型配置对应老师的分层规范：`MODEL_FAST` 用于抓取、清洗、关键词提取；`MODEL_ANALYSIS` 用于结构化分析和竞品对标；`MODEL_REPORT` 用于复杂推理和报告生成。
+
+正式使用 GPT 时，将 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`MODEL_FAST`、`MODEL_ANALYSIS`、`MODEL_REPORT` 改为对应服务商配置即可。
 
 ### 连通性测试
 

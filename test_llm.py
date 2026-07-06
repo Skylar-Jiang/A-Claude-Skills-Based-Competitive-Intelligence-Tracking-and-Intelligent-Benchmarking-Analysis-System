@@ -15,7 +15,7 @@ def test_openai_compatible():
         base_url=os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com"),
     )
     response = client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL", "deepseek-v4-flash"),
+        model=os.getenv("MODEL_FAST", "deepseek-v4-flash"),
         messages=[{"role": "user", "content": "简单介绍竞品情报分析的作用"}],
         temperature=float(os.getenv("MODEL_TEMPERATURE", "0.0")),
         max_tokens=512,
