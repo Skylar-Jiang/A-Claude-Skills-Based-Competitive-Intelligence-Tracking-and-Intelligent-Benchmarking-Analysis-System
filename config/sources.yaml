@@ -117,11 +117,11 @@ sources:
     type: manual_csv
     name: "生鲜社交舆情样例"
     file: "data/raw/fresh_social_manual.csv"
-    dimension: "negative"
+    dimension: "sentiment"
     enabled: true
   - id: fresh_complaint_manual
     type: manual_csv
     name: "生鲜投诉舆情样例"
     file: "data/raw/fresh_complaint_manual.csv"
-    dimension: "negative"
+    dimension: "sentiment"
     enabled: true
