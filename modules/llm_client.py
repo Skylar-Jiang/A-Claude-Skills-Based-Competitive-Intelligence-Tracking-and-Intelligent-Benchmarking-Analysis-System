@@ -27,13 +27,19 @@ class ModelConfig:
     @classmethod
     def from_env(cls) -> "ModelConfig":
         load_dotenv()
-        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        api_key = os.getenv("OPENAI_API_KEY", "").strip() or os.getenv("DEEPSEEK_API_KEY", "").strip()
         if not api_key:
-            raise LLMConfigurationError("OPENAI_API_KEY is empty. Please configure .env first.")
+            raise LLMConfigurationError("OPENAI_API_KEY or DEEPSEEK_API_KEY is empty. Please configure .env first.")
+
+        base_url = (
+            os.getenv("OPENAI_BASE_URL", "").strip()
+            or os.getenv("DEEPSEEK_BASE_URL", "").strip()
+            or "https://api.siliconflow.com/v1"
+        )
 
         return cls(
             api_key=api_key,
-            base_url=os.getenv("OPENAI_BASE_URL", "https://api.siliconflow.com/v1").strip(),
+            base_url=base_url,
             model_fast=os.getenv("MODEL_FAST", "deepseek-ai/DeepSeek-V4-Pro").strip(),
             model_analysis=os.getenv("MODEL_ANALYSIS", "deepseek-ai/DeepSeek-V4-Pro").strip(),
             model_report=os.getenv("MODEL_REPORT", "deepseek-ai/DeepSeek-V4-Pro").strip(),

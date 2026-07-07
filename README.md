@@ -30,6 +30,7 @@ config/sources.yaml
 
 ```powershell
 .\venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 python main.py
 ```
 
@@ -38,6 +39,20 @@ Swagger：
 ```text
 http://127.0.0.1:8000/docs
 ```
+
+默认 LLM Provider 使用 OpenAI-compatible 协议。`.env` 可以直接配置 DeepSeek 官方兼容网关：
+
+```text
+OPENAI_API_KEY=<你的 DeepSeek Key>
+OPENAI_BASE_URL=https://api.deepseek.com/v1
+MODEL_FAST=deepseek-v4-flash
+MODEL_ANALYSIS=deepseek-v4-pro
+MODEL_REPORT=deepseek-v4-pro
+```
+
+这三个模型变量不要合并：`fast` 用于轻量抓取/清洗/分类，`analysis` 用于结构化竞品分析，`report` 用于报告生成。可以按 DeepSeek 账号实际可用模型分别配置。
+
+RAG 默认使用 Hugging Face `BAAI/bge-m3` + Chroma。首次真实重建向量库时会下载模型；如果网络不稳定，可以在 `.env` 中保留 `HF_ENDPOINT=https://hf-mirror.com` 或改成可用镜像。
 
 ## 推荐演示顺序
 
@@ -50,6 +65,13 @@ http://127.0.0.1:8000/docs
 7. `POST /report/generate`：生成生鲜竞品报告。
 8. `GET /reports`：查看报告列表。
 9. `GET /logs/skill-trace`：查看 Skill 调用记录。
+
+更完整的阶段边界、验收接口和剩余风险见：
+
+```text
+docs/任务边界与验收总说明.md
+docs/接口说明.md
+```
 
 `/analyze/multi-agent` 示例：
 
@@ -81,4 +103,4 @@ http://127.0.0.1:8000/docs
   -> FastAPI + Swagger 演示
 ```
 
-默认 `provider=mock`，不依赖真实模型 Key；如果切换 `provider=openai`，系统会使用 `.env` 中的 OpenAI-compatible 配置。
+默认 `provider=mock`，不依赖真实模型 Key；如果切换 `provider=openai` 或调用 `/analyze`，系统会使用 `.env` 中的 OpenAI-compatible 配置。

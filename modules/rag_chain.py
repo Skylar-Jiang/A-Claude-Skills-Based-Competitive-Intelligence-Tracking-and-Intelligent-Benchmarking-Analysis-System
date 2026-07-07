@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
+import os
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -20,7 +20,8 @@ CHROMA_DIR = Path("chroma_db")
 COLLECTION_NAME = "competitor_intelligence"
 CHUNK_SIZE = 700
 CHUNK_OVERLAP = 120
-EMBEDDING_DIMENSION = 128
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
+DEFAULT_HF_ENDPOINT = "https://hf-mirror.com"
 
 
 @dataclass
@@ -35,23 +36,68 @@ class EvidenceChunk:
     collected_at: str
 
 
-class HashEmbeddingFunction(EmbeddingFunction[Documents]):
-    """Deterministic local embedding so Chroma works without extra API calls."""
+class HuggingFaceEmbeddingFunction(EmbeddingFunction[Documents]):
+    """Chroma adapter around LangChain HuggingFaceEmbeddings."""
+
+    def __init__(
+        self,
+        model_name: str,
+        device: str = "cpu",
+        normalize_embeddings: bool = True,
+    ):
+        try:
+            from langchain_huggingface import HuggingFaceEmbeddings
+        except ImportError as exc:
+            raise RuntimeError(
+                "Hugging Face RAG requires langchain-huggingface and sentence-transformers. "
+                "Install project dependencies with `python -m pip install -r requirements.txt`."
+            ) from exc
+
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name=model_name,
+            model_kwargs={"device": device},
+            encode_kwargs={"normalize_embeddings": normalize_embeddings},
+        )
 
     def __call__(self, input: Documents) -> Embeddings:
-        return [hash_embedding(text) for text in input]
+        return self.embeddings.embed_documents(list(input))
+
+    @staticmethod
+    def name() -> str:
+        return "huggingface"
+
+    def embed_query(self, input: Documents | str) -> Embeddings:
+        texts = input if isinstance(input, list) else [input]
+        return self.embeddings.embed_documents(list(texts))
 
 
-def hash_embedding(text: str) -> list[float]:
-    vector = [0.0] * EMBEDDING_DIMENSION
-    tokens = re.findall(r"[\w\u4e00-\u9fff]+", text.lower())
-    for token in tokens:
-        digest = hashlib.sha256(token.encode("utf-8")).digest()
-        index = int.from_bytes(digest[:4], "big") % EMBEDDING_DIMENSION
-        sign = 1.0 if digest[4] % 2 == 0 else -1.0
-        vector[index] += sign
-    norm = math.sqrt(sum(value * value for value in vector)) or 1.0
-    return [value / norm for value in vector]
+def get_embedding_settings(env: dict[str, str] | None = None) -> dict[str, object]:
+    env = env or os.environ
+    endpoint = env.get("HF_ENDPOINT", DEFAULT_HF_ENDPOINT).strip()
+    if endpoint:
+        os.environ.setdefault("HF_ENDPOINT", endpoint)
+    normalize = env.get("RAG_NORMALIZE_EMBEDDINGS", "true").strip().lower() in {"1", "true", "yes", "on"}
+    return {
+        "provider": "huggingface",
+        "model_name": env.get("RAG_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL).strip() or DEFAULT_EMBEDDING_MODEL,
+        "device": env.get("RAG_EMBEDDING_DEVICE", "cpu").strip() or "cpu",
+        "normalize_embeddings": normalize,
+        "hf_endpoint": endpoint,
+    }
+
+
+def collection_name_for(settings: dict[str, object]) -> str:
+    model_slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(settings["model_name"])).strip("_").lower()
+    return f"{COLLECTION_NAME}_{model_slug}"
+
+
+def create_embedding_function() -> HuggingFaceEmbeddingFunction:
+    settings = get_embedding_settings()
+    return HuggingFaceEmbeddingFunction(
+        model_name=str(settings["model_name"]),
+        device=str(settings["device"]),
+        normalize_embeddings=bool(settings["normalize_embeddings"]),
+    )
 
 
 def split_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
@@ -96,10 +142,15 @@ class ChromaRAGIndex:
     def __init__(self, chunks: list[EvidenceChunk] | None = None):
         self.chunks = chunks or []
         self.client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+        self.embedding_settings = get_embedding_settings()
         self.collection = self.client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            embedding_function=HashEmbeddingFunction(),
-            metadata={"description": "Traceable competitor intelligence chunks"},
+            name=collection_name_for(self.embedding_settings),
+            embedding_function=create_embedding_function(),
+            metadata={
+                "description": "Traceable competitor intelligence chunks",
+                "embedding_provider": str(self.embedding_settings["provider"]),
+                "embedding_model": str(self.embedding_settings["model_name"]),
+            },
         )
 
     @classmethod

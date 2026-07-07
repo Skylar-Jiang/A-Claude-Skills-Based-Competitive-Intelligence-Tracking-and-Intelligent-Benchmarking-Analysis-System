@@ -12,8 +12,14 @@ from modules.dashboard import comparison_data, competitor_summary, list_reports,
 from modules.data_loader import fetch_rss, fetch_webpage, save_records_csv
 from modules.data_loader import load_csv
 from modules.llm_client import LLMConfigurationError, ModelConfig
-from modules.memory_store import clear_cache, read_traces
-from modules.rag_chain import build_project_index
+from modules.memory_store import (
+    append_conversation_message,
+    clear_cache,
+    clear_conversation,
+    read_conversation_messages,
+    read_traces,
+)
+from modules.rag_chain import get_embedding_settings, build_project_index
 from modules.report_writer import save_report
 from modules.report_scheduler import ReportSchedule, load_report_schedules, upsert_report_schedule
 from modules.scheduler import scheduler_enabled, start_background_collector
@@ -70,6 +76,7 @@ class AnalyzeRequest(BaseModel):
     question: str = "请基于现有公开数据进行竞品动态分析"
     agent: str = Field(default="all", examples=["all", "price_monitor", "new_product", "sentiment"])
     top_k: int = 6
+    session_id: str | None = Field(default=None, description="可选会话 ID；传入后会记录 user/assistant 回合。")
 
 
 class SkillRunRequest(BaseModel):
@@ -107,6 +114,11 @@ class ReportScheduleRequest(BaseModel):
     enabled: bool = True
 
 
+class ConversationMessageRequest(BaseModel):
+    role: str = Field(examples=["user", "assistant"])
+    content: str
+
+
 @app.get("/")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
@@ -132,6 +144,7 @@ def read_config(_: None = Depends(verify_api_key)) -> dict[str, Any]:
             "report": config.model_report,
         },
         "temperature": config.temperature,
+        "rag_embedding": get_embedding_settings(),
     }
 
 
@@ -265,7 +278,12 @@ def ingest_rss(payload: RSSIngestRequest, _: None = Depends(verify_api_key)) -> 
 @app.post("/rag/rebuild")
 def rebuild_rag(_: None = Depends(verify_api_key)) -> dict[str, Any]:
     index = build_project_index()
-    return {"chunks": len(index.chunks), "vector_store": "Chroma", "collection": "competitor_intelligence"}
+    return {
+        "chunks": len(index.chunks),
+        "vector_store": "Chroma",
+        "collection": index.collection.name,
+        "embedding": index.embedding_settings,
+    }
 
 
 @app.get("/rag/search")
@@ -302,6 +320,28 @@ def agent_traces(limit: int = 50, _: None = Depends(verify_api_key)) -> list[dic
 @app.delete("/memory/cache")
 def purge_memory_cache(_: None = Depends(verify_api_key)) -> dict[str, int]:
     return clear_cache()
+
+
+@app.get("/memory/conversations/{session_id}")
+def conversation_memory(session_id: str, _: None = Depends(verify_api_key)) -> dict[str, Any]:
+    messages = read_conversation_messages(session_id)
+    return {"session_id": session_id, "messages": messages, "message_count": len(messages)}
+
+
+@app.post("/memory/conversations/{session_id}")
+def append_conversation_memory(
+    session_id: str,
+    payload: ConversationMessageRequest,
+    _: None = Depends(verify_api_key),
+) -> dict[str, Any]:
+    if payload.role not in {"user", "assistant", "system"}:
+        raise HTTPException(status_code=400, detail="role must be user, assistant, or system")
+    return append_conversation_message(session_id, payload.role, payload.content)
+
+
+@app.delete("/memory/conversations/{session_id}")
+def purge_conversation_memory(session_id: str, _: None = Depends(verify_api_key)) -> dict[str, Any]:
+    return clear_conversation(session_id)
 
 
 @app.get("/reports")
@@ -347,14 +387,31 @@ def run_report_schedule(schedule_id: str, _: None = Depends(verify_api_key)) -> 
 @app.post("/analyze")
 def analyze(payload: AnalyzeRequest, _: None = Depends(verify_api_key)) -> dict[str, Any]:
     try:
+        if payload.session_id:
+            append_conversation_message(payload.session_id, "user", payload.question)
         orchestrator = AgentOrchestrator()
         if payload.agent == "all":
             result = orchestrator.run_all(payload.competitor, payload.question, top_k=payload.top_k)
             result["report"] = orchestrator.generate_report(payload.competitor, result["results"])
             result["report_files"] = save_report(result["report"], payload.competitor)
+            attach_conversation_memory(payload.session_id, result)
             return result
-        return orchestrator.run_agent(payload.agent, payload.competitor, payload.question, top_k=payload.top_k)
+        result = orchestrator.run_agent(payload.agent, payload.competitor, payload.question, top_k=payload.top_k)
+        attach_conversation_memory(payload.session_id, result)
+        return result
     except LLMConfigurationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def attach_conversation_memory(session_id: str | None, result: dict[str, Any]) -> None:
+    if not session_id:
+        return
+    assistant_summary = result.get("report", result).get("summary") or result.get("report", result).get(
+        "executive_summary",
+        "分析结果已生成",
+    )
+    append_conversation_message(session_id, "assistant", str(assistant_summary))
+    messages = read_conversation_messages(session_id)
+    result["memory"] = {"session_id": session_id, "message_count": len(messages)}
