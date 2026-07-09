@@ -12,6 +12,7 @@ from typing import Sequence
 
 import chromadb
 from chromadb import Documents, EmbeddingFunction, Embeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from modules.data_loader import IntelligenceRecord, load_project_records
 
@@ -103,14 +104,13 @@ def create_embedding_function() -> HuggingFaceEmbeddingFunction:
 def split_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
     if chunk_size <= overlap:
         raise ValueError("chunk_size must be larger than overlap")
-    chunks = []
-    start = 0
-    while start < len(text):
-        chunk = text[start : start + chunk_size].strip()
-        if chunk:
-            chunks.append(chunk)
-        start += chunk_size - overlap
-    return chunks
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=overlap,
+        length_function=len,
+        separators=["\n\n", "\n", "。", "！", "？", "，", " ", ""],
+    )
+    return [chunk.strip() for chunk in splitter.split_text(text or "") if chunk.strip()]
 
 
 def tokenize(text: str) -> set[str]:

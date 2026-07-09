@@ -70,7 +70,7 @@ sources:
     type: manual_csv
     name: "新产季与供应动态手工样例"
     file: "data/raw/wholesale_supply_update_manual.csv"
-    dimension: "market"
+    dimension: "new_product"
     enabled: true
   - id: wholesale_risk_manual
     type: manual_csv
@@ -82,5 +82,5 @@ sources:
     type: manual_csv
     name: "天气物流影响手工样例"
     file: "data/raw/wholesale_logistics_weather_manual.csv"
-    dimension: "market"
+    dimension: "sentiment"
     enabled: true

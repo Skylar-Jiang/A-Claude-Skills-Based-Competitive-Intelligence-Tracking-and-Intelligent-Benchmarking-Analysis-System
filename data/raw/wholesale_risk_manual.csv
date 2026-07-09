@@ -1,0 +1,6 @@
+id,competitor,product_category,product_name,specification,price,unit_price,title,content,source,publish_time,url,dimension
+risk001,山东寿光黄瓜,vegetable,黄瓜,精品 5kg,18.9,3.78元/kg,寿光黄瓜抽检结果合格,公开监管样例显示寿光黄瓜抽检批次农残指标合格，短期质量风险较低。,监管公告手工样例,2026-07-01,https://manual.local/wholesale/risk/risk001,sentiment
+risk002,河北黄瓜,vegetable,黄瓜,统货 5kg,15.2,3.04元/kg,河北黄瓜雨后腐损率上升,河北产区雨后部分统货黄瓜腐损率上升，建议采购时提高验货比例。,行业风险手工样例,2026-07-02,https://manual.local/wholesale/risk/risk002,sentiment
+risk003,辽宁批发市场黄瓜,vegetable,黄瓜,统货 5kg,15.0,3.00元/kg,辽宁黄瓜到货存在计量争议,辽宁某批发市场黄瓜到货抽样称重出现缺斤少两反馈，需关注计量风险。,市场反馈手工样例,2026-07-02,https://manual.local/wholesale/risk/risk003,sentiment
+risk004,华北鸡蛋供应源,egg,鲜鸡蛋,30斤,156,10.40元/kg,华北鸡蛋供应短缺预警解除,华北鸡蛋到货量恢复，前期供应短缺风险下降。,行业风险手工样例,2026-07-03,https://manual.local/wholesale/risk/risk004,sentiment
+risk005,东北猪肉供应渠道,meat,白条猪,50kg,920,18.40元/kg,东北猪肉冷链延误风险,东北猪肉供应渠道受冷链车辆调度影响，到货时间可能延迟半日。,物流风险手工样例,2026-07-03,https://manual.local/wholesale/risk/risk005,sentiment
