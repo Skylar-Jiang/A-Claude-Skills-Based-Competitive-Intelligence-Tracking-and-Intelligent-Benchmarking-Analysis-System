@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 import os
+from dataclasses import asdict
+from typing import Literal
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from modules.analysis_chain import run_evidence_analysis
 from modules.agent_core import AgentOrchestrator, registry_snapshot
 from modules.dashboard import comparison_data, competitor_summary, list_reports, report_preview, risk_tags_view
-from modules.data_loader import fetch_rss, fetch_webpage, save_records_csv
+from modules.data_loader import fetch_rss, fetch_webpage, load_project_records, save_records_csv
 from modules.data_loader import load_csv
-from modules.llm_client import LLMConfigurationError, ModelConfig
+from modules.llm_client import LLMConfigurationError, ModelConfig, OpenAICompatibleLLM
 from modules.memory_store import (
     append_conversation_message,
     clear_cache,
@@ -21,6 +27,7 @@ from modules.memory_store import (
 )
 from modules.rag_chain import get_embedding_settings, build_project_index
 from modules.report_writer import save_report
+from modules.prompts import PRICE_MONITOR_PROMPT
 from modules.report_scheduler import ReportSchedule, load_report_schedules, upsert_report_schedule
 from modules.scheduler import scheduler_enabled, start_background_collector
 from modules.skill_core import get_skill, list_skills, read_skill_traces, run_skill
@@ -32,7 +39,7 @@ from modules.source_manager import (
     run_collection_job,
     upsert_source,
 )
-from modules.tools import add_manual_record_tool, ingest_csv_tool, retrieve_evidence_tool
+from modules.tools import add_manual_record_tool, ingest_csv_tool, retrieve_evidence_tool, set_project_index
 
 load_dotenv()
 
@@ -41,6 +48,40 @@ app = FastAPI(
     description="面向生鲜批发采购场景的区域供应源 Skill + Agent + RAG + 报告生成 API。",
     version="1.0.0",
 )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+    if isinstance(exc.detail, dict) and "code" in exc.detail and "message" in exc.detail:
+        error = exc.detail
+    else:
+        error = {"code": f"http_{exc.status_code}", "message": str(exc.detail)}
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"success": False, "error": error},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={
+            "success": False,
+            "error": {"code": "validation_error", "message": "Request validation failed", "details": exc.errors()},
+        },
+    )
+
+
+@app.exception_handler(LLMConfigurationError)
+async def llm_configuration_error_handler(_: Request, exc: LLMConfigurationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            "success": False,
+            "error": {"code": "llm_not_configured", "message": str(exc)},
+        },
+    )
 
 
 def verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
@@ -79,6 +120,13 @@ class AnalyzeRequest(BaseModel):
     session_id: str | None = Field(default=None, description="可选会话 ID；传入后会记录 user/assistant 回合。")
 
 
+class FormalAnalysisRequest(BaseModel):
+    competitor: str = Field(description="分析对象，例如“全国农产品批发市场”。")
+    question: str = Field(min_length=1, description="必须由真实检索证据回答的问题。")
+    mode: Literal["real", "mock"] = "real"
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
 class SkillRunRequest(BaseModel):
     competitor: str = Field(default="山东寿光黄瓜", examples=["山东寿光黄瓜"], description="区域供应源竞品，不是品牌、公司或电商平台。")
     query: str = "分析山东寿光黄瓜相对河北黄瓜和辽宁批发市场黄瓜的批发价波动、异常价差、新批次供应和质量风险"
@@ -87,14 +135,15 @@ class SkillRunRequest(BaseModel):
     report_type: str = "weekly"
     date_range: dict[str, str] = Field(default_factory=lambda: {"start": "2026-07-01", "end": "2026-07-06"})
     top_k: int = 5
-    provider: str = Field(default="mock", examples=["mock", "openai"])
+    provider: Literal["mock", "openai"] = Field(default="mock", examples=["mock", "openai"])
     context: dict[str, Any] = Field(default_factory=dict)
 
 
 class DataSourceRequest(BaseModel):
     source_id: str
-    source_type: str = Field(examples=["csv", "rss", "webpage", "forum"])
+    source_type: str = Field(examples=["csv", "rss", "webpage", "forum", "agri_daily"])
     url: str = ""
+    urls: list[str] = Field(default_factory=list)
     path: str = ""
     competitor: str = ""
     dimension: str = "general"
@@ -173,19 +222,44 @@ def run_single_skill(
     _: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
     try:
-        return run_skill(skill_name, payload.model_dump())
+        get_skill(skill_name)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        return run_skill(skill_name, payload.model_dump())
+    except LLMConfigurationError:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "skill_execution_failed", "message": str(exc)},
+        ) from exc
 
 
 @app.post("/analyze/multi-agent")
 def analyze_multi_agent(payload: SkillRunRequest, _: None = Depends(verify_api_key)) -> dict[str, Any]:
-    return run_skill("orchestrator_skill", payload.model_dump())
+    try:
+        return run_skill("orchestrator_skill", payload.model_dump())
+    except LLMConfigurationError:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "analysis_failed", "message": str(exc)},
+        ) from exc
 
 
 @app.post("/report/generate")
 def generate_report_from_skill(payload: SkillRunRequest, _: None = Depends(verify_api_key)) -> dict[str, Any]:
-    return run_skill("report_generation_skill", payload.model_dump())
+    try:
+        return run_skill("report_generation_skill", payload.model_dump())
+    except LLMConfigurationError:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "report_generation_failed", "message": str(exc)},
+        ) from exc
 
 
 @app.get("/logs/skill-trace")
@@ -196,6 +270,22 @@ def skill_trace_logs(limit: int = 50, _: None = Depends(verify_api_key)) -> list
 @app.get("/sources")
 def list_data_sources(_: None = Depends(verify_api_key)) -> list[dict[str, Any]]:
     return [source.__dict__ for source in load_sources()]
+
+
+@app.get("/records")
+def list_records(
+    competitor: str | None = None,
+    dimension: str | None = None,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    _: None = Depends(verify_api_key),
+) -> list[dict[str, Any]]:
+    records = load_project_records()
+    if competitor:
+        records = [record for record in records if record.competitor == competitor]
+    if dimension:
+        records = [record for record in records if record.dimension == dimension]
+    return [asdict(record) for record in records[offset : offset + limit]]
 
 
 @app.post("/sources")
@@ -278,6 +368,7 @@ def ingest_rss(payload: RSSIngestRequest, _: None = Depends(verify_api_key)) -> 
 @app.post("/rag/rebuild")
 def rebuild_rag(_: None = Depends(verify_api_key)) -> dict[str, Any]:
     index = build_project_index()
+    set_project_index(index)
     return {
         "chunks": len(index.chunks),
         "vector_store": "Chroma",
@@ -295,6 +386,41 @@ def search_rag(
     _: None = Depends(verify_api_key),
 ) -> list[dict[str, Any]]:
     return retrieve_evidence_tool(query=query, dimension=dimension, top_k=top_k, competitor=competitor)
+
+
+@app.post("/analysis/run")
+def run_formal_analysis(payload: FormalAnalysisRequest, _: None = Depends(verify_api_key)) -> dict[str, Any]:
+    try:
+        evidence = retrieve_evidence_tool(
+            query=f"{payload.competitor} {payload.question}",
+            dimension="price",
+            top_k=payload.top_k,
+            competitor=None,
+        )
+        if not evidence:
+            return run_evidence_analysis(
+                None,
+                PRICE_MONITOR_PROMPT,
+                {"competitor": payload.competitor, "question": payload.question, "evidence": []},
+                mode=payload.mode,
+            )
+        llm = None if payload.mode == "mock" else OpenAICompatibleLLM()
+        return run_evidence_analysis(
+            llm,
+            PRICE_MONITOR_PROMPT,
+            {"competitor": payload.competitor, "question": payload.question, "evidence": evidence},
+            mode=payload.mode,
+        )
+    except LLMConfigurationError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "llm_not_configured", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "analysis_failed", "message": str(exc)},
+        ) from exc
 
 
 @app.get("/dashboard/summary")
@@ -400,9 +526,15 @@ def analyze(payload: AnalyzeRequest, _: None = Depends(verify_api_key)) -> dict[
         attach_conversation_memory(payload.session_id, result)
         return result
     except LLMConfigurationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "llm_not_configured", "message": str(exc)},
+        ) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "analysis_failed", "message": str(exc)},
+        ) from exc
 
 
 def attach_conversation_memory(session_id: str | None, result: dict[str, Any]) -> None:

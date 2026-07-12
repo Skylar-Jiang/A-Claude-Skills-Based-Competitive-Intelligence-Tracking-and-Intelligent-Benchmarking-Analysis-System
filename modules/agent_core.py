@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from modules.analysis_chain import run_evidence_analysis
 from modules.llm_client import OpenAICompatibleLLM
 from modules.memory_store import append_trace, get_cached_result, make_cache_key, set_cached_result
 from modules.prompts import (
@@ -105,20 +106,17 @@ class BaseAgent(ABC):
             "question": question,
             "evidence": evidence,
         }
-        result = self.llm.chat_json(self.prompt, payload, role=self.model_role)
+        result = run_evidence_analysis(self.llm, self.prompt, payload, mode="real", role=self.model_role)
         result["agent"] = self.name
         result["evidence"] = evidence
         result["cache_hit"] = False
-        result["reasoning_trace"] = {
-            "steps": [
-                "build_agent_query",
-                "retrieve_evidence_tool",
-                "structured_llm_analysis",
-            ],
-            "tools": ["retrieve_evidence_tool"],
-            "model_role": self.model_role,
-            "evidence_chunk_ids": [item.get("chunk_id") for item in evidence],
-        }
+        result["reasoning_trace"].update(
+            {
+                "agent_steps": ["build_agent_query", "retrieve_evidence_tool"],
+                "tools": ["retrieve_evidence_tool"],
+                "model_role": self.model_role,
+            }
+        )
         set_cached_result(cache_key, result)
         append_trace(
             {
@@ -211,15 +209,23 @@ class AgentOrchestrator:
             "analyses": analyses,
             "evidence": list(evidence_by_id.values()),
         }
-        report = self.llm.chat_json(REPORT_GENERATION_PROMPT, payload, role="report", max_tokens=1800)
+        report = run_evidence_analysis(
+            self.llm,
+            REPORT_GENERATION_PROMPT,
+            payload,
+            mode="real",
+            role="report",
+            max_tokens=1800,
+        )
         report["evidence"] = payload["evidence"]
         report["cache_hit"] = False
-        report["reasoning_trace"] = {
-            "steps": ["merge_agent_outputs", "dedupe_evidence", "generate_standard_report"],
-            "tools": ["report_generation_tool"],
-            "model_role": "report",
-            "evidence_chunk_ids": list(evidence_by_id),
-        }
+        report["reasoning_trace"].update(
+            {
+                "report_steps": ["merge_agent_outputs", "dedupe_evidence"],
+                "tools": ["report_generation_tool"],
+                "model_role": "report",
+            }
+        )
         set_cached_result(cache_key, report)
         append_trace(
             {

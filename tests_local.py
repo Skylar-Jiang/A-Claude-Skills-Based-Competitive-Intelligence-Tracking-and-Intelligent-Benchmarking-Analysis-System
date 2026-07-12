@@ -66,19 +66,23 @@ def with_test_rag_embedding(func):
 
 def test_data_and_rag():
     def run():
-        records = load_csv("data/raw/shouguang_cucumber_manual.csv")
-        assert len(records) >= 3
-        assert all(record.source_url for record in records)
+        records = load_csv("data/processed/intelligence_records.csv")
+        real_records = [record for record in records if record.source_name and record.published_at]
+        assert len(real_records) >= 5
+        assert all(record.source_url.startswith("https://www.agri.cn/") for record in real_records)
 
         result = ingest_csv_tool("data/raw/shouguang_cucumber_manual.csv")
         assert result["count"] >= 3
+        assert result["mode"] == "sample"
+        assert result["indexed"] is False
 
         index = build_project_index()
-        assert len(index.chunks) >= 6
+        assert len(index.chunks) >= 5
 
-        evidence = retrieve_evidence_tool("山东寿光黄瓜 黄瓜 批发价 到货价 价差", competitor="山东寿光黄瓜", top_k=3)
+        evidence = retrieve_evidence_tool("黄瓜 农产品批发价格200指数 涨跌", top_k=3)
         assert evidence
-        assert evidence[0]["source_url"]
+        assert evidence[0]["source_name"] == "农业农村部市场与信息化司"
+        assert evidence[0]["published_at"]
 
     with_test_rag_embedding(run)
 

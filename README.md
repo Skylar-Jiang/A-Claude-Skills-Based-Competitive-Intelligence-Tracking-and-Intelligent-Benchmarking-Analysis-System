@@ -1,115 +1,103 @@
-# 生鲜批发采购区域供应源竞品动态追踪与智能对标分析系统
+# 基于 Claude Skill 的竞品动态追踪与智能对标分析系统
 
-本项目基于现有 Skill + Agent + RAG + FastAPI + 报告生成架构，研究对象统一为生鲜批发采购场景下的区域供应源竞品分析。系统面向生鲜批发商、采购商和供应链人员，围绕黄瓜、番茄、鸡蛋、猪肉等具体生鲜品类，追踪不同产区、批发市场和供应渠道提供的同类商品动态，例如山东寿光黄瓜、河北黄瓜、辽宁某批发市场黄瓜。
-
-在本项目中，代码和接口里的 `competitor` 字段暂时保留，含义统一解释为“区域供应源竞品”，不是传统品牌、公司或电商平台。
-
-## 为什么选择生鲜批发采购
-
-- 生鲜批发价格每天变化明显，适合验证价格监控、价差识别与时序分析。
-- 黄瓜、番茄、鸡蛋、猪肉等高频采购品类，对批发商和供应链人员具有直接决策价值。
-- 区域供应源之间的竞争集中在批发价、到货价、供应稳定性、质量等级和采购窗口，适合验证多 Agent 分析。
-- 系统可优先使用区域官方数据、批发市场行情、监管公告、行业资讯、天气物流信息和手工 CSV 样例，不绕过登录、验证码和反爬。
-
-## 数据源
-
-默认配置文件：
+当前版本以后端为核心，已用少量真实、公开、可追溯的数据跑通：
 
 ```text
-config/sources.yaml
+农业农村部公开日度报告
+  -> 专用解析与 raw 保存
+  -> 清洗、公开 URL 校验、去重与 processed 保存
+  -> LangChain 分块 + Hugging Face embedding + Chroma
+  -> 带原文/来源/链接/发布时间的检索
+  -> LangChain RunnableSequence 结构化分析
+  -> FastAPI / Swagger / Markdown + JSON 报告
 ```
 
-数据源类型：
+当前业务边界是全国农产品批发市场日度动态，重点验证黄瓜及蔬菜价格涨跌信号。现有区域供应源手工 CSV 只作为 sample，不进入正式知识库；当前不开发前端，不声称具备区域成交价、大规模全网采集或生产部署能力。
 
-- 政府/行业价格公开页面：全国农产品批发市场价格信息、商务部食用农产品价格信息。
-- 区域/市场行情手工 CSV：产区报价、批发市场报价、到货价、成交价和异常价差。
-- 监管与质量风险手工 CSV：抽检不合格、食品安全通报、质量等级、腐损率和计量争议。
-- 行业资讯手工 CSV：新产季上市、新品种、新产区、新规格、新批次供应、天气物流影响。
+## 真实数据
 
-无法稳定公开抓取的来源默认采用 `manual_csv` 手工导入公开样例，不写绕过登录、验证码、反爬、App 抓包的代码。后续若接入真实市场行情或监管数据，应通过公开网页、授权 API 或规范化 CSV 接入。
+- 来源：农业农村部市场与信息化司、中国农业农村信息网。
+- 数量：8 条，发布日期覆盖 2026-01-05 至 2026-06-18。
+- raw：`data/raw/real/agri_daily_wholesale_reports.csv`。
+- processed：`data/processed/intelligence_records.csv`。
+- 字段：标题、正文、来源名称、原始链接、发布时间、采集时间、分析对象、维度、稳定记录 ID。
+- 重复采集：第一次新增 8 条，第二次新增 0 条、识别重复 8 条。
 
-## 快速运行
+完整说明见 `docs/数据源与采集说明.md`。
+
+## 安装与配置
+
+推荐 Python 3.12，并使用仓库现有虚拟环境或新建环境：
 
 ```powershell
+python -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python main.py
+Copy-Item .env.example .env
 ```
 
-Swagger：
+真实模型使用 OpenAI-compatible 配置：
 
 ```text
-http://127.0.0.1:8000/docs
-```
-
-默认 LLM Provider 使用 OpenAI-compatible 协议。`.env` 可以直接配置 DeepSeek 官方兼容网关：
-
-```text
-OPENAI_API_KEY=<你的 DeepSeek Key>
+OPENAI_API_KEY=<key>
 OPENAI_BASE_URL=https://api.deepseek.com/v1
-MODEL_FAST=deepseek-v4-flash
-MODEL_ANALYSIS=deepseek-v4-pro
-MODEL_REPORT=deepseek-v4-pro
+MODEL_FAST=<可用模型>
+MODEL_ANALYSIS=<可用模型>
+MODEL_REPORT=<可用模型>
+RAG_EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
 ```
 
-这三个模型变量不要合并：`fast` 用于轻量抓取/清洗/分类，`analysis` 用于结构化竞品分析，`report` 用于报告生成。可以按 DeepSeek 账号实际可用模型分别配置。
+Key 缺失时真实分析返回 503，不会降级成 Mock。正式接口 `/analysis/run` 默认 `mode=real`，只有显式传入 `mode=mock` 才使用 Mock；历史 Skill 兼容接口仍默认 `provider=mock`，其响应会明确标注 Mock，正式调用需显式传入 `provider=openai`。
 
-RAG 默认使用 Hugging Face `BAAI/bge-m3` + Chroma。首次真实重建向量库时会下载模型；如果网络不稳定，可以在 `.env` 中保留 `HF_ENDPOINT=https://hf-mirror.com` 或改成可用镜像。
+## 运行主链
 
-如果本地曾经下载中断，可能出现 `BAAI/bge-m3 does not appear to have a file named pytorch_model.bin or model.safetensors`。可先补全 embedding 模型缓存：
+启动服务：
 
 ```powershell
-$env:HF_ENDPOINT="https://hf-mirror.com"
-.\venv\Scripts\python.exe -c "from huggingface_hub import snapshot_download; snapshot_download('BAAI/bge-m3', resume_download=True)"
+$env:COLLECTION_SCHEDULER_ENABLED="false"
+.\venv\Scripts\python.exe -m uvicorn modules.api_server:app --host 127.0.0.1 --port 8000
 ```
 
-## 推荐演示顺序
+Swagger：`http://127.0.0.1:8000/docs`
 
-1. `GET /sources`：查看生鲜批发采购数据源。
-2. `POST /ingest/csv`：导入任一手工 CSV，例如 `data/raw/shouguang_cucumber_manual.csv`。
-3. `POST /rag/rebuild`：重建 Chroma 生鲜批发采购知识库。
-4. `GET /rag/search`：查询 `山东寿光黄瓜 河北黄瓜 批发价 到货价 价差 风险`。
-5. `GET /skills`：查看 Skill 列表。
-6. `POST /analyze/multi-agent`：运行区域供应源多 Agent 分析。
-7. `POST /report/generate`：生成生鲜批发采购对标报告。
-8. `GET /reports`：查看报告列表。
-9. `GET /logs/skill-trace`：查看 Skill 调用记录。
+推荐顺序：
 
-更完整的阶段边界、验收接口和剩余风险见：
+1. `GET /sources` 查看真实数据源。
+2. `POST /collect/run?force=true&use_llm_filter=false` 采集；结果中的 `errors` 和 `fetch_errors` 必须为空才是全成功。
+3. `GET /records` 查看清洗后的真实记录。
+4. `POST /rag/rebuild` 重建 Chroma。
+5. `GET /rag/search?query=黄瓜价格涨跌%20农产品批发价格200指数` 检索证据。
+6. `POST /analysis/run`，传 `mode=real` 做正式分析，或显式传 `mode=mock` 只验证结构。
+7. `POST /report/generate` 使用兼容 Skill 报告入口；已生成报告可从 `GET /reports` 查询。
 
-```text
-docs/任务边界与验收总说明.md
-docs/接口说明.md
-```
-
-`/analyze/multi-agent` 示例：
+正式分析请求示例：
 
 ```json
 {
-  "competitor": "山东寿光黄瓜",
-  "query": "分析山东寿光黄瓜相对河北黄瓜和辽宁批发市场黄瓜的批发价波动、异常价差、新批次供应和质量风险",
-  "dimensions": ["price", "product", "sentiment", "trend"],
-  "report_type": "weekly",
-  "provider": "mock",
-  "date_range": {
-    "start": "2026-07-01",
-    "end": "2026-07-06"
-  }
+  "competitor": "全国农产品批发市场",
+  "question": "基于公开日度报告分析黄瓜价格涨跌信号，并明确证据日期与局限",
+  "mode": "real",
+  "top_k": 5
 }
 ```
 
-## 架构说明
+## 测试
 
-原有通用架构保持不变，只替换业务场景：
-
-```text
-区域官方数据/批发市场行情/监管公告/手工 CSV
-  -> 数据清洗与分块
-  -> Chroma RAG 知识库
-  -> 价格 / 新品 / 舆情 / 趋势 Skill
-  -> orchestrator_skill 多 Agent 汇总
-  -> 生鲜批发采购对标报告生成
-  -> FastAPI + Swagger 演示
+```powershell
+.\venv\Scripts\python.exe -m unittest discover -s tests -v
+.\venv\Scripts\python.exe tests_local.py
+.\venv\Scripts\python.exe -m compileall -q main.py modules tests
 ```
 
-默认 `provider=mock`，不依赖真实模型 Key；如果切换 `provider=openai` 或调用 `/analyze`，系统会使用 `.env` 中的 OpenAI-compatible 配置。
+2026-07-12 最终门禁：28 个新增单元/集成测试全部通过，原有回归脚本通过，编译通过，Uvicorn 健康接口与 Swagger 均通过。TestClient 会显示 Starlette/httpx 弃用警告，不影响本次结果，已列为依赖升级事项。
+
+## 文档
+
+- `docs/现状审计报告.md`
+- `docs/当前阶段边界与后续扩展.md`
+- `docs/后端架构与模块边界.md`
+- `docs/数据与接口约定.md`
+- `docs/数据源与采集说明.md`
+- `docs/API接口文档.md`
+- `docs/测试报告.md`
+- `docs/项目交接文档.md`

@@ -8,9 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from modules.analysis_chain import run_evidence_analysis
 from modules.agent_core import AgentOrchestrator
 from modules.dashboard import infer_risk_tags, risk_rank
-from modules.llm_client import LLMConfigurationError, OpenAICompatibleLLM
+from modules.llm_client import OpenAICompatibleLLM
 from modules.report_writer import save_report
 from modules.tools import retrieve_evidence_tool
 
@@ -307,10 +308,14 @@ insufficient_evidence, generated_at。
         "analyses": analyses,
         "evidence": evidence,
     }
-    try:
-        return OpenAICompatibleLLM().chat_json(prompt, llm_payload, role="report", max_tokens=2200)
-    except Exception:
-        return None
+    return run_evidence_analysis(
+        OpenAICompatibleLLM(),
+        prompt,
+        llm_payload,
+        mode="real",
+        role="report",
+        max_tokens=2200,
+    )
 
 
 def run_agent_or_mock(payload: dict[str, Any], agent_name: str, dimension: str, query_suffix: str) -> dict[str, Any]:
@@ -320,37 +325,19 @@ def run_agent_or_mock(payload: dict[str, Any], agent_name: str, dimension: str, 
     top_k = int(payload.get("top_k", 5))
 
     if provider != "mock":
-        try:
-            result = AgentOrchestrator().run_agent(agent_name, competitor, question, top_k=top_k)
-            evidence = result.get("evidence", [])
-            risk_level, risk_tags = aggregate_risk(evidence)
-            return standard_output(
-                competitor=competitor,
-                analysis_result=result,
-                evidence=evidence,
-                risk_level=risk_level,
-                risk_tags=risk_tags,
-                suggestions=result.get("recommendations", []) or result.get("suggestions", []),
-                insufficient_evidence=len(evidence) == 0,
-                extra={"provider": provider, "skill_agent": agent_name},
-            )
-        except (LLMConfigurationError, Exception) as exc:
-            evidence = evidence_for(payload, dimension=dimension, query_suffix=query_suffix)
-            risk_level, risk_tags = aggregate_risk(evidence)
-            return standard_output(
-                competitor=competitor,
-                analysis_result={
-                    **summarize_evidence(evidence, dimension),
-                    "provider_error": str(exc),
-                    "fallback": "mock",
-                },
-                evidence=evidence,
-                risk_level=risk_level,
-                risk_tags=risk_tags,
-                suggestions=["检查模型 Key 或继续使用 provider=mock 完成无 Key 演示。"],
-                insufficient_evidence=len(evidence) == 0,
-                extra={"provider": provider, "skill_agent": agent_name},
-            )
+        result = AgentOrchestrator().run_agent(agent_name, competitor, question, top_k=top_k)
+        evidence = result.get("evidence", [])
+        risk_level, risk_tags = aggregate_risk(evidence)
+        return standard_output(
+            competitor=competitor,
+            analysis_result=result,
+            evidence=evidence,
+            risk_level=risk_level,
+            risk_tags=risk_tags,
+            suggestions=result.get("recommendations", []) or result.get("suggestions", []),
+            insufficient_evidence=len(evidence) == 0,
+            extra={"provider": provider, "skill_agent": agent_name},
+        )
 
     evidence = evidence_for(payload, dimension=dimension, query_suffix=query_suffix)
     risk_level, risk_tags = aggregate_risk(evidence)

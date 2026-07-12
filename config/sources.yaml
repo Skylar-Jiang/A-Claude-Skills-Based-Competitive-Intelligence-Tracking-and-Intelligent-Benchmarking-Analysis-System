@@ -36,51 +36,69 @@ product_categories:
     keywords: ["虾", "鱼", "带鱼", "鲈鱼", "水产"]
 
 sources:
+  - id: agri_daily_wholesale_reports
+    type: agri_daily
+    name: "农业农村部农产品批发价格200指数日度报告"
+    urls:
+      - "https://www.agri.cn/zx/zxfb/202601/t20260105_8800370.htm"
+      - "https://www.agri.cn/zx/zxfb/202602/t20260210_8811423.htm"
+      - "https://www.agri.cn/zx/zxfb/202603/t20260326_8822818.htm"
+      - "https://www.agri.cn/zx/zxfb/202604/t20260401_8824528.htm"
+      - "https://www.agri.cn/zx/zxfb/202605/t20260522_8838391.htm"
+      - "https://www.agri.cn/zx/zxfb/202605/t20260529_8840490.htm"
+      - "https://www.agri.cn/zx/zxfb/202606/t20260617_8844927.htm"
+      - "https://www.agri.cn/zx/zxfb/202606/t20260618_8845498.htm"
+    competitor: "全国农产品批发市场"
+    dimension: "price"
+    keywords: ["黄瓜", "蔬菜", "农产品批发价格200指数"]
+    llm_filter_enabled: false
+    priority: 1
+    enabled: true
   - id: agri_price_public
     type: html
     name: "全国农产品批发市场价格信息"
     url: "https://pfsc.agri.cn/"
     dimension: "price"
-    enabled: true
+    enabled: false
   - id: mofcom_food_price
     type: html
     name: "商务部食用农产品价格信息"
     url: "https://cif.mofcom.gov.cn/"
     dimension: "price"
-    enabled: true
+    enabled: false
   - id: shouguang_cucumber_manual
     type: manual_csv
     name: "山东寿光黄瓜批发价手工样例"
     file: "data/raw/shouguang_cucumber_manual.csv"
     dimension: "price"
-    enabled: true
+    enabled: false
   - id: hebei_cucumber_manual
     type: manual_csv
     name: "河北黄瓜批发价手工样例"
     file: "data/raw/hebei_cucumber_manual.csv"
     dimension: "price"
-    enabled: true
+    enabled: false
   - id: liaoning_market_cucumber_manual
     type: manual_csv
     name: "辽宁批发市场黄瓜手工样例"
     file: "data/raw/liaoning_market_cucumber_manual.csv"
     dimension: "price"
-    enabled: true
+    enabled: false
   - id: wholesale_supply_update_manual
     type: manual_csv
     name: "新产季与供应动态手工样例"
     file: "data/raw/wholesale_supply_update_manual.csv"
     dimension: "new_product"
-    enabled: true
+    enabled: false
   - id: wholesale_risk_manual
     type: manual_csv
     name: "质量监管与供应风险手工样例"
     file: "data/raw/wholesale_risk_manual.csv"
     dimension: "sentiment"
-    enabled: true
+    enabled: false
   - id: wholesale_logistics_weather_manual
     type: manual_csv
     name: "天气物流影响手工样例"
     file: "data/raw/wholesale_logistics_weather_manual.csv"
     dimension: "sentiment"
-    enabled: true
+    enabled: false

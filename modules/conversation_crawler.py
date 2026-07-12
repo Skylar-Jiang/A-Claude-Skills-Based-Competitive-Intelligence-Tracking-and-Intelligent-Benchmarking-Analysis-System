@@ -110,7 +110,7 @@ def fetch_webpage_html(url: str) -> str:
     return response.text
 
 
-def crawl_public_webpage(url: str, fetcher=None, allow_fallback: bool = True) -> dict[str, Any]:
+def crawl_public_webpage(url: str, fetcher=None, allow_fallback: bool = False) -> dict[str, Any]:
     fetch_html = fetcher or fetch_webpage_html
     try:
         html = fetch_html(url)

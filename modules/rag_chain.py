@@ -40,6 +40,8 @@ class EvidenceChunk:
     competitor: str
     dimension: str
     collected_at: str
+    source_name: str = ""
+    published_at: str = ""
 
 
 class HuggingFaceEmbeddingFunction(EmbeddingFunction[Documents]):
@@ -153,6 +155,8 @@ def records_to_chunks(records: Sequence[IntelligenceRecord]) -> list[EvidenceChu
                     competitor=record.competitor,
                     dimension=record.dimension,
                     collected_at=record.collected_at,
+                    source_name=record.source_name,
+                    published_at=record.published_at,
                 )
             )
     return chunks
@@ -196,6 +200,8 @@ def compute_records_signature(records: Sequence[IntelligenceRecord], settings: d
                 "competitor": record.competitor,
                 "dimension": record.dimension,
                 "collected_at": record.collected_at,
+                "source_name": record.source_name,
+                "published_at": record.published_at,
             }
             for record in records
         ],
@@ -267,6 +273,8 @@ class ChromaRAGIndex:
                             "competitor": chunk.competitor,
                             "dimension": chunk.dimension,
                             "collected_at": chunk.collected_at,
+                            "source_name": chunk.source_name,
+                            "published_at": chunk.published_at,
                         }
                         for chunk in batch
                     ],
@@ -308,6 +316,8 @@ class ChromaRAGIndex:
                     competitor=metadata.get("competitor", ""),
                     dimension=metadata.get("dimension", ""),
                     collected_at=metadata.get("collected_at", ""),
+                    source_name=metadata.get("source_name", ""),
+                    published_at=metadata.get("published_at", ""),
                 )
             )
         by_id = {chunk.chunk_id: chunk for chunk in chunks + fallback}

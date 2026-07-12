@@ -28,11 +28,11 @@ def render_markdown_report(report: dict[str, Any]) -> str:
         f"# {report.get('title', '生鲜批发采购区域供应源竞品动态追踪与智能对标分析报告')}",
         "",
         "## 1. 执行摘要",
-        report.get("executive_summary", ""),
+        report.get("executive_summary", report.get("summary", "")),
         "",
         "## 2. 区域供应源动态汇总",
     ]
-    append_items(lines, report.get("platform_updates", report.get("key_findings", [])))
+    append_items(lines, report.get("platform_updates", report.get("key_findings", report.get("findings", []))))
     sections = [
         ("## 3. 肉蛋奶价格对比", report.get("meat_egg_dairy_price_comparison", "")),
         ("## 4. 基础蔬菜价格对比", report.get("vegetable_price_comparison", "")),
@@ -45,10 +45,21 @@ def render_markdown_report(report: dict[str, Any]) -> str:
     for heading, content in sections:
         lines.extend(["", heading, str(content)])
     lines.extend(["", "## 10. 经营建议"])
-    append_items(lines, report.get("operation_suggestions", report.get("recommendations", [])))
+    append_items(
+        lines,
+        report.get("operation_suggestions", report.get("recommendations", report.get("suggestions", []))),
+    )
     lines.extend(["", "## 11. 证据来源列表"])
-    for url in report.get("source_urls", []):
-        lines.append(f"- {url}")
+    source_urls = report.get("source_urls", [])
+    if source_urls:
+        lines.extend(f"- {url}" for url in source_urls)
+    else:
+        for item in report.get("evidence", []):
+            source_name = item.get("source_name", "未知来源")
+            published_at = item.get("published_at", "发布时间未知")
+            source_url = item.get("source_url", "")
+            if source_url:
+                lines.append(f"- {source_name} | {published_at} | {source_url}")
     lines.extend(["", "## 12. 生成时间", report.get("generated_at", datetime.now().isoformat())])
     return "\n".join(lines).strip() + "\n"
 

@@ -10,16 +10,67 @@ from typing import Any
 
 import yaml
 
-from modules.data_loader import IntelligenceRecord, MultiSourceDocumentLoader, load_csv, save_records_csv
+from modules.data_loader import (
+    IntelligenceRecord,
+    MultiSourceDocumentLoader,
+    is_public_source_url,
+    load_csv,
+    save_records_csv,
+)
 from modules.filtering import filter_and_enrich_records
 from modules.rag_chain import build_project_index
 from modules.semantic_filter import semantic_filter_records
 
 CONFIG_DIR = Path("data/config")
 SCENARIO_SOURCE_YAML = Path("config/sources.yaml")
-SOURCE_CONFIG_PATH = CONFIG_DIR / "data_sources.json"
+SOURCE_CONFIG_PATH = CONFIG_DIR / "data_sources.runtime.json"
 COLLECTION_LOG_PATH = Path("logs/collection_jobs.jsonl")
 AUTO_COLLECTION_PATH = Path("data/raw/auto_collected_records.csv")
+PROCESSED_COLLECTION_PATH = Path("data/processed/intelligence_records.csv")
+
+
+def persist_collected_records(
+    raw_records: list[IntelligenceRecord],
+    raw_path: Path,
+    processed_path: Path = PROCESSED_COLLECTION_PATH,
+    keywords: list[str] | None = None,
+    processed_records: list[IntelligenceRecord] | None = None,
+) -> dict[str, Any]:
+    """Persist raw extraction and merge traceable cleaned records idempotently."""
+    existing_raw = load_csv(raw_path) if raw_path.exists() else []
+    raw_by_id = {record.record_id: record for record in existing_raw}
+    for record in raw_records:
+        raw_by_id.setdefault(record.record_id, record)
+    save_records_csv(raw_by_id.values(), raw_path)
+
+    if processed_records is None:
+        accepted, rejected = filter_and_enrich_records(raw_records, keywords=keywords or [])
+    else:
+        accepted, rejected = processed_records, []
+    traceable = []
+    for record in accepted:
+        if not is_public_source_url(record.source_url):
+            rejected.append({"source_url": record.source_url, "reason": "non_public_source_url"})
+        elif not record.source_name or not record.published_at:
+            rejected.append({"source_url": record.source_url, "reason": "missing_traceability_metadata"})
+        else:
+            traceable.append(record)
+    existing = load_csv(processed_path) if processed_path.exists() else []
+    existing_ids = {record.record_id for record in existing}
+    existing_urls = {record.source_url for record in existing}
+    new_records = [
+        record for record in traceable
+        if record.record_id not in existing_ids and record.source_url not in existing_urls
+    ]
+    save_records_csv(existing + new_records, processed_path)
+    return {
+        "raw_count": len(raw_records),
+        "new_count": len(new_records),
+        "duplicate_count": len(traceable) - len(new_records),
+        "rejected": rejected,
+        "raw_path": str(raw_path),
+        "processed_path": str(processed_path),
+    }
 
 
 @dataclass
@@ -27,6 +78,7 @@ class DataSourceConfig:
     source_id: str
     source_type: str
     url: str = ""
+    urls: list[str] = field(default_factory=list)
     path: str = ""
     competitor: str = ""
     dimension: str = "general"
@@ -65,12 +117,14 @@ def parse_datetime(value: str) -> datetime | None:
 
 
 def load_sources() -> list[DataSourceConfig]:
+    if SOURCE_CONFIG_PATH.exists():
+        data = json.loads(SOURCE_CONFIG_PATH.read_text(encoding="utf-8"))
+        return [DataSourceConfig(**item) for item in data]
     if SCENARIO_SOURCE_YAML.exists():
         return load_sources_from_yaml(SCENARIO_SOURCE_YAML)
-    if not SOURCE_CONFIG_PATH.exists():
-        save_sources(default_sources())
-    data = json.loads(SOURCE_CONFIG_PATH.read_text(encoding="utf-8"))
-    return [DataSourceConfig(**item) for item in data]
+    sources = default_sources()
+    save_sources(sources)
+    return sources
 
 
 def load_sources_from_yaml(path: Path) -> list[DataSourceConfig]:
@@ -99,6 +153,7 @@ def load_sources_from_yaml(path: Path) -> list[DataSourceConfig]:
                 source_id=item.get("id", f"source_{idx}"),
                 source_type=mapped_type,
                 url=item.get("url", ""),
+                urls=item.get("urls", []),
                 path=item.get("file", item.get("path", "")),
                 competitor=item.get("competitor", ""),
                 dimension=item.get("dimension", "general"),
@@ -240,6 +295,7 @@ def collect_source(source: DataSourceConfig, use_llm_filter: bool = True) -> dic
     loader = MultiSourceDocumentLoader(
         source_type=source.source_type,
         url=source.url,
+        urls=source.urls,
         path=source.path,
         competitor=source.competitor,
         dimension=source.dimension,
@@ -256,27 +312,35 @@ def collect_source(source: DataSourceConfig, use_llm_filter: bool = True) -> dic
     if use_llm_filter and source.llm_filter_enabled:
         records, llm_rejected, llm_meta = semantic_filter_records(records)
 
-    existing = load_csv(AUTO_COLLECTION_PATH) if AUTO_COLLECTION_PATH.exists() else []
-    existing_ids = {record.record_id for record in existing}
-    existing_urls = {record.source_url for record in existing}
-    new_records = [
-        record for record in records if record.record_id not in existing_ids and record.source_url not in existing_urls
-    ]
-    if new_records:
-        save_records_csv(existing + new_records, AUTO_COLLECTION_PATH)
+    raw_is_traceable = all(
+        is_public_source_url(record.source_url) and record.source_name and record.published_at
+        for record in raw_records
+    )
+    raw_root = Path("data/raw/real") if raw_is_traceable else Path("data/samples/collected")
+    raw_path = raw_root / f"{source.source_id}.csv"
+    persistence = persist_collected_records(
+        raw_records,
+        raw_path=raw_path,
+        processed_path=PROCESSED_COLLECTION_PATH,
+        keywords=source.keywords,
+        processed_records=records,
+    )
     source.mark_run()
+    persistence_rejected = persistence["rejected"]
     log_entry = {
         "source_id": source.source_id,
         "source_type": source.source_type,
         "raw_count": len(raw_records),
         "rule_pass_count": len(rule_records),
-        "count": len(new_records),
-        "duplicate_count": len(records) - len(new_records),
-        "rejected_count": len(rejected) + len(llm_rejected),
-        "rejected": (rejected + llm_rejected)[:20],
+        "count": persistence["new_count"],
+        "duplicate_count": persistence["duplicate_count"],
+        "rejected_count": len(rejected) + len(llm_rejected) + len(persistence_rejected),
+        "rejected": (rejected + llm_rejected + persistence_rejected)[:20],
+        "fetch_errors": loader.errors,
         "llm_filter": llm_meta,
         "collected_at": source.last_run_at,
-        "output_path": str(AUTO_COLLECTION_PATH),
+        "raw_output_path": persistence["raw_path"],
+        "output_path": persistence["processed_path"],
     }
     append_collection_log(log_entry)
     return log_entry
@@ -287,6 +351,8 @@ def run_collection_job(force: bool = False, use_llm_filter: bool = True) -> dict
     results = []
     errors = []
     for source in sources:
+        if not source.enabled:
+            continue
         if not force and not source.due():
             continue
         try:
@@ -296,6 +362,9 @@ def run_collection_job(force: bool = False, use_llm_filter: bool = True) -> dict
     save_sources(sources)
     if any(item.get("count", 0) > 0 for item in results):
         index = build_project_index()
+        from modules.tools import set_project_index
+
+        set_project_index(index)
         index_meta = {"rebuilt": True, "chunks": len(index.chunks)}
     else:
         index_meta = {"rebuilt": False, "chunks": 0}

@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import feedparser
 import pandas as pd
@@ -30,8 +31,11 @@ class IntelligenceRecord:
     dimension: str = "general"
     collected_at: str = ""
     record_id: str = ""
+    source_name: str = ""
+    published_at: str = ""
 
     def __post_init__(self) -> None:
+        self.source_url = normalize_source_url(self.source_url)
         self.content = clean_text(self.content)
         self.title = clean_text(self.title)
         if not self.collected_at:
@@ -39,6 +43,30 @@ class IntelligenceRecord:
         if not self.record_id:
             base = f"{self.source_url}|{self.title}|{self.content[:200]}"
             self.record_id = hashlib.sha256(base.encode("utf-8")).hexdigest()[:16]
+
+
+def normalize_source_url(url: str) -> str:
+    """Normalize source identity while preserving non-tracking query parameters."""
+    value = (url or "").strip()
+    if not value:
+        return ""
+    parsed = urlsplit(value)
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    port = parsed.port
+    netloc = host
+    if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
+        netloc = f"{host}:{port}"
+    path = re.sub(r"/+", "/", parsed.path or "/")
+    if path != "/":
+        path = path.rstrip("/")
+    tracking_keys = {"fbclid", "gclid", "mc_cid", "mc_eid"}
+    query_items = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_") and key.lower() not in tracking_keys
+    ]
+    return urlunsplit((scheme, netloc, path, urlencode(sorted(query_items)), ""))
 
 
 def clean_text(text: str) -> str:
@@ -78,6 +106,8 @@ def load_csv(path: str | Path) -> list[IntelligenceRecord]:
                 dimension=row.get("dimension", "") or infer_dimension_from_row(row),
                 collected_at=row.get("collected_at", row.get("publish_time", row.get("quote_date", ""))),
                 record_id=row.get("record_id", ""),
+                source_name=row.get("source_name", row.get("source", "")),
+                published_at=row.get("published_at", row.get("publish_time", "")),
             )
         )
     return dedupe_records(records)
@@ -136,6 +166,100 @@ def infer_dimension_from_row(row: dict[str, Any]) -> str:
     if {"current_price", "previous_price", "change_rate"}.issubset(row):
         return "price"
     return "general"
+
+
+def is_public_source_url(url: str) -> bool:
+    """Return whether a URL can identify a public, non-demo source."""
+    parsed = urlparse((url or "").strip())
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in {"http", "https"} or not host:
+        return False
+    if host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".local") or host.endswith(".test"):
+        return False
+    return host not in {"example.com", "www.example.com", "example.org", "www.example.org", "example.net", "www.example.net"}
+
+
+def parse_agri_daily_html(
+    html: str,
+    source_url: str,
+    collected_at: str = "",
+) -> IntelligenceRecord:
+    """Parse one Agriculture Ministry daily wholesale-price report."""
+    if not is_public_source_url(source_url):
+        raise ValueError("Agriculture daily report requires a public HTTP(S) source URL")
+    soup = BeautifulSoup(html, "html.parser")
+    title_node = soup.select_one("h1")
+    title = clean_text(title_node.get_text(" ", strip=True) if title_node else (soup.title.string if soup.title else ""))
+    content_node = soup.select_one("div.TRS_Editor")
+    if not content_node:
+        raise ValueError("Agriculture daily report content was not found")
+    content = clean_text(content_node.get_text(" ", strip=True))
+    if not title or not content:
+        raise ValueError("Agriculture daily report is missing title or content")
+    source_meta = soup.select_one('meta[name="source"]')
+    source_name = clean_text(source_meta.get("content", "") if source_meta else "") or "农业农村部市场与信息化司"
+    page_text = clean_text(soup.get_text(" ", strip=True))
+    published_match = re.search(r"时间[：:]\s*(\d{4}-\d{2}-\d{2})", page_text)
+    if not published_match:
+        published_match = re.search(r"/(\d{8})/t\d+_", source_url)
+        published_at = datetime.strptime(published_match.group(1), "%Y%m%d").date().isoformat() if published_match else ""
+    else:
+        published_at = published_match.group(1)
+    if not published_at:
+        raise ValueError("Agriculture daily report publication date was not found")
+    return IntelligenceRecord(
+        title=title,
+        content=content,
+        source_url=source_url,
+        source_type="agri_daily",
+        competitor="全国农产品批发市场",
+        dimension="price",
+        collected_at=collected_at,
+        source_name=source_name,
+        published_at=published_at,
+    )
+
+
+def fetch_agri_daily_reports(
+    urls: list[str],
+    fetcher=requests.get,
+    on_error=None,
+) -> list[IntelligenceRecord]:
+    """Fetch a small configured batch of public daily reports with retries."""
+    records: list[IntelligenceRecord] = []
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+        )
+    }
+    errors: list[dict[str, str]] = []
+    for index, url in enumerate(urls):
+        if not is_public_source_url(url):
+            raise ValueError(f"Non-public source URL is not allowed in real collection: {url}")
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = fetcher(url, timeout=20, headers=headers)
+                response.raise_for_status()
+                if getattr(response, "apparent_encoding", None):
+                    response.encoding = response.apparent_encoding
+                records.append(parse_agri_daily_html(response.text, url))
+                break
+            except (requests.RequestException, ValueError) as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(1)
+        else:
+            error = {"url": url, "error": str(last_error)}
+            errors.append(error)
+            if on_error:
+                on_error(error)
+        if fetcher is requests.get and index < len(urls) - 1:
+            time.sleep(2)
+    if not records and errors:
+        raise RuntimeError(f"All Agriculture daily reports failed: {errors}")
+    return dedupe_records(records)
 
 
 def fetch_webpage(url: str, competitor: str = "", dimension: str = "general") -> IntelligenceRecord:
@@ -246,6 +370,8 @@ def save_records_csv(records: Iterable[IntelligenceRecord], path: str | Path) ->
         "dimension",
         "collected_at",
         "record_id",
+        "source_name",
+        "published_at",
     ]
     pd.DataFrame([asdict(record) for record in unique], columns=columns).to_csv(
         output_path,
@@ -256,11 +382,15 @@ def save_records_csv(records: Iterable[IntelligenceRecord], path: str | Path) ->
 
 
 def load_project_records() -> list[IntelligenceRecord]:
-    records: list[IntelligenceRecord] = []
-    for directory in (RAW_DIR, PROCESSED_DIR):
-        for path in directory.glob("*.csv"):
-            records.extend(load_csv(path))
-    return dedupe_records(records)
+    """Load only cleaned, traceable records for the formal knowledge base."""
+    path = PROCESSED_DIR / "intelligence_records.csv"
+    if not path.exists():
+        return []
+    return dedupe_records(
+        record
+        for record in load_csv(path)
+        if is_public_source_url(record.source_url) and record.source_name and record.published_at
+    )
 
 
 class MultiSourceDocumentLoader:
@@ -273,16 +403,24 @@ class MultiSourceDocumentLoader:
         path: str = "",
         competitor: str = "",
         dimension: str = "general",
+        urls: list[str] | None = None,
     ):
         self.source_type = source_type
         self.url = url
         self.path = path
         self.competitor = competitor
         self.dimension = dimension
+        self.urls = urls or []
+        self.errors: list[dict[str, str]] = []
 
     def load_records(self) -> list[IntelligenceRecord]:
         if self.source_type == "csv":
             return load_csv(self.path)
+        if self.source_type == "agri_daily":
+            return fetch_agri_daily_reports(
+                self.urls or ([self.url] if self.url else []),
+                on_error=self.errors.append,
+            )
         if self.source_type == "rss":
             return fetch_rss(self.url, competitor=self.competitor, dimension=self.dimension)
         if self.source_type == "search_page":
@@ -307,6 +445,8 @@ class MultiSourceDocumentLoader:
                         "competitor": record.competitor,
                         "dimension": record.dimension,
                         "collected_at": record.collected_at,
+                        "source_name": record.source_name,
+                        "published_at": record.published_at,
                     },
                 )
             )

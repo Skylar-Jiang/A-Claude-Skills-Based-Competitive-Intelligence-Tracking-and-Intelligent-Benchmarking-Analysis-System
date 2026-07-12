@@ -6,7 +6,7 @@ import re
 from dataclasses import replace
 from typing import Iterable
 
-from modules.data_loader import IntelligenceRecord
+from modules.data_loader import IntelligenceRecord, normalize_source_url
 
 MIN_CONTENT_LENGTH = 80
 
@@ -82,7 +82,7 @@ DIMENSION_KEYWORDS = {
 
 
 def normalize_url(url: str) -> str:
-    return re.sub(r"[?#].*$", "", url.strip().rstrip("/"))
+    return normalize_source_url(url)
 
 
 def infer_dimension(text: str, fallback: str = "general") -> str:
