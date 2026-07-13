@@ -1,128 +1,42 @@
-# =========================
-# Python 基础缓存
-# =========================
 __pycache__/
 *.py[cod]
-*$py.class
-*.pyo
-*.pyd
-
-# 测试、类型检查、格式化缓存
 .pytest_cache/
-.mypy_cache/
 .ruff_cache/
+.mypy_cache/
 .coverage
 htmlcov/
-.coverage.*
-.cache/
-docs/superpowers/
-.worktrees/
-
-# 打包产物
+*.egg-info/
 build/
 dist/
-*.egg-info/
-.eggs/
 
-# =========================
-# 虚拟环境：绝对不要上传
-# =========================
 venv/
 .venv/
 env/
-ENV/
 
-# =========================
-# 环境变量与密钥：绝对不要上传
-# =========================
 .env
 .env.*
 !.env.example
 
-# Claude / Anthropic / LangChain 本地配置
-.anthropic/
-.claude/settings.local.json
-
-# =========================
-# 项目数据与生成文件
-# =========================
-# 原始舆情数据、清洗数据、生成报告通常不直接上传
-# 如果需要展示，保留 sample*.csv 或 .gitkeep
-data/raw/*
-data/processed/*
-data/reports/*
-data/samples/*
-data/config/*.runtime.json
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-!data/reports/.gitkeep
-!data/raw/sample*.csv
-!data/raw/*_manual.csv
-!data/raw/real/
-!data/raw/real/agri_daily_wholesale_reports.csv
-!data/processed/sample*.csv
-!data/processed/intelligence_records.csv
-!data/reports/sample*.md
-!data/reports/20260711-214555-全国农产品批发市场-真实公开数据.json
-!data/reports/20260711-214555-全国农产品批发市场-真实公开数据.md
-
-# 向量库与本地记忆：通常体积大且可重新生成
-chroma_db/
-faiss_index/
-vector_store/
-memory/
-daily-tasks/
-
-# 本地数据库与缓存
 *.db
 *.sqlite
 *.sqlite3
-
-# 日志文件
+data/chroma/
+data/uploads/*
+data/reports/*
+!data/uploads/.gitkeep
+!data/reports/.gitkeep
 logs/
 *.log
 
-# =========================
-# FastAPI / Uvicorn 本地运行缓存
-# =========================
-*.pid
-.uvicorn/
-
-# =========================
-# 前端可选：React / Vue
-# 如果后面做前端看板，需要这些
-# =========================
+frontend/*
+!frontend/.gitkeep
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-.vite/
-.next/
-.nuxt/
-frontend/dist/
-frontend/build/
-coverage/
 
-# =========================
-# Docker 本地卷与临时文件
-# Dockerfile / docker-compose.yml 不要忽略
-# =========================
-docker-data/
-volumes/
-.tmp/
+.worktrees/
+docs/superpowers/
 tmp/
-
-# =========================
-# IDE / 系统文件
-# =========================
-.vscode/
-!.vscode/extensions.json
-!.vscode/settings.example.json
-.idea/
+.tmp/
 .DS_Store
 Thumbs.db
-desktop.ini
-data/national_veg_prices_2026-07-05/
-.hf/
-data/cache/huggingface/
+.idea/
+.vscode/

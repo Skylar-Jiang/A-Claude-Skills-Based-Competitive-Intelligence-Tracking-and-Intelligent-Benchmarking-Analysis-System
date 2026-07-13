@@ -1,0 +1,5 @@
+name: operation_content
+implementation_status: scaffold
+owner: teammate-three
+enabled: false
+description: Contract placeholder only; marketing content generation is not implemented.

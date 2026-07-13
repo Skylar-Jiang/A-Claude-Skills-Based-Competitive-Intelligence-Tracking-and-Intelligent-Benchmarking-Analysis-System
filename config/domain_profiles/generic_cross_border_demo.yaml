@@ -1,0 +1,9 @@
+profile_id: generic_cross_border_demo
+display_name: TradePilot Generic Cross-border Demo
+data_origin: demo
+implementation_status: scaffold
+adapter: app.adapters.demo.DemoDomainAdapter
+knowledge_domains:
+  - product_knowledge
+  - review_insight
+notes: This profile contains deterministic fixtures only and is not a real product domain.
