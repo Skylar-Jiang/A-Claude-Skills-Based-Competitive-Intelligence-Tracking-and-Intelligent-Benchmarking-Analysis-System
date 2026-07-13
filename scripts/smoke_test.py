@@ -36,7 +36,10 @@ def main() -> None:
                 session=session,
                 knowledge_store=store,
                 report_dir=root / "reports",
-                settings=Settings(database_url=f"sqlite:///{root / 'smoke.db'}"),
+                settings=Settings(
+                    _env_file=None,
+                    database_url=f"sqlite:///{root / 'smoke.db'}",
+                ),
             )
             run = service.start(
                 AnalysisRunCreate(product_id=product.product_id, data_mode=DataMode.DEMO)

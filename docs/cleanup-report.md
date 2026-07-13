@@ -24,3 +24,8 @@ environments are ignored and must not be committed.
   references, and 1 Demo/Scaffold report were verified.
 - The preserved planning DOCX matched the original copy at SHA-256
   `991031611A14BF6AF61E1BDDC1A62FF18C5ADAD50751E7A51448DF4CAA90BD47`.
+- After merging to main, the ignore-rule change exposed additional untracked legacy Chroma state,
+  old collection/RAG indexes, old course-task logs/assets, and old memory caches. A second reference
+  scan confirmed the new project did not use them; those paths were then removed.
+- Main-tree verification also proved tests and Smoke explicitly disable local `.env` loading, so a
+  developer's private model configuration cannot change Demo/Real contract test outcomes.

@@ -8,6 +8,7 @@ from app.main import create_app
 
 def make_client(tmp_path: Path) -> TestClient:
     settings = Settings(
+        _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         report_dir=tmp_path / "reports",
         upload_dir=tmp_path / "uploads",
@@ -68,6 +69,7 @@ def test_mock_and_configured_real_never_fall_back_to_demo(tmp_path: Path) -> Non
             json={"product_id": "missing-mock-product", "data_mode": "mock"},
         )
     configured = Settings(
+        _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'configured.db'}",
         report_dir=tmp_path / "configured-reports",
         upload_dir=tmp_path / "configured-uploads",

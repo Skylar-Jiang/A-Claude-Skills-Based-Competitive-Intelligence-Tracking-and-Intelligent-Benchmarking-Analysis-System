@@ -31,7 +31,7 @@ def test_analysis_service_persists_four_outputs_evidence_state_and_report(tmp_pa
             session=session,
             knowledge_store=store,
             report_dir=tmp_path,
-            settings=Settings(database_url="sqlite://"),
+            settings=Settings(_env_file=None, database_url="sqlite://"),
         )
 
         run = service.start(
