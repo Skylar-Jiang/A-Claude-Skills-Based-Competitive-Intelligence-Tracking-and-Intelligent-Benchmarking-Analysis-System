@@ -1,8 +1,8 @@
 # Development guide
 
-Use Python 3.12 only. Install `requirements-dev.txt`, copy `.env.example` to `.env`, and run the four
-verification commands in the README before handing off changes. Never commit `.env`, keys, SQLite,
-Chroma state, generated reports, caches, or virtual environments.
+Use Python 3.12 only. Install `requirements.txt` with `python -m pip install -r requirements.txt`, copy
+`.env.example` to `.env`, and run the verification commands in the README before handing off changes.
+Never commit `.env`, keys, SQLite, Chroma state, generated reports, caches, or virtual environments.
 
 To add a domain, add exactly:
 
