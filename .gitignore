@@ -40,5 +40,4 @@ tmp/
 Thumbs.db
 .idea/
 .vscode/
-data/filtered/meta_pet_supplies_prefiltered.jsonl
-data/filtered/pet_supplies_reviews_prefiltered.jsonl
+
