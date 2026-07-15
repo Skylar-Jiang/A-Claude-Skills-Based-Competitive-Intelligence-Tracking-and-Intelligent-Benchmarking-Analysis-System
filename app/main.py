@@ -4,15 +4,18 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.api.responses import failure
 from app.api.v1.router import router
+from app.background.registry import BackgroundProviderRegistry
 from app.core.config import Settings, get_settings
 from app.core.exceptions import TradePilotError
 from app.db.migrations import upgrade_database
 from app.rag.factory import KnowledgeStoreFactory, create_knowledge_store
+from app.rag.in_memory import InMemoryKnowledgeStore
+from app.services.run_dispatcher import RunDispatcher
 from app.statistics.factory import StatisticsProviderFactory, create_statistics_provider
 
 
@@ -21,11 +24,30 @@ def create_app(
     *,
     knowledge_store_factory: KnowledgeStoreFactory = create_knowledge_store,
     statistics_provider_factory: StatisticsProviderFactory = create_statistics_provider,
+    background_registry: BackgroundProviderRegistry | None = None,
 ) -> FastAPI:
     resolved = settings or get_settings()
-    connect_args = {"check_same_thread": False} if resolved.database_url.startswith("sqlite") else {}
-    engine = create_engine(resolved.database_url, connect_args=connect_args)
+    connect_args = (
+        {"check_same_thread": False, "timeout": 30}
+        if resolved.database_url.startswith("sqlite")
+        else {}
+    )
+    engine = create_engine(resolved.database_url, connect_args=connect_args, echo=resolved.app_debug)
+    if resolved.database_url.startswith("sqlite") and ":memory:" not in resolved.database_url:
+        @event.listens_for(engine, "connect")
+        def configure_sqlite_connection(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.close()
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+    def worker_knowledge_store():  # type: ignore[no-untyped-def]
+        return (
+            create_knowledge_store(resolved)
+            if knowledge_store_factory is create_knowledge_store
+            else knowledge_store_factory()
+        )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):  # type: ignore[no-untyped-def]
@@ -35,12 +57,22 @@ def create_app(
         application.state.settings = resolved
         application.state.session_factory = session_factory
         application.state.knowledge_store = (
-            create_knowledge_store(resolved)
-            if knowledge_store_factory is create_knowledge_store
-            else knowledge_store_factory()
+            InMemoryKnowledgeStore()
+            if knowledge_store_factory is create_knowledge_store and resolved.rag_use_chroma
+            else worker_knowledge_store()
         )
+        application.state.knowledge_store_factory = worker_knowledge_store
         application.state.statistics_provider_factory = statistics_provider_factory
+        application.state.background_registry = background_registry or BackgroundProviderRegistry()
+        application.state.run_dispatcher = RunDispatcher(
+            session_factory=session_factory,
+            knowledge_store_factory=worker_knowledge_store,
+            settings=resolved,
+            statistics_provider_factory=statistics_provider_factory,
+            background_registry=application.state.background_registry,
+        )
         yield
+        application.state.run_dispatcher.shutdown()
         engine.dispose()
 
     application = FastAPI(

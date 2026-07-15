@@ -10,6 +10,16 @@ accessory_terms:
   - replacement part
   - accessory
   - refill
+  - cat water fountain filters
+  - water fountain filters
+  - pet fountain filters
+  - spare cat scratching post
+  - scratching post replacement pole
+  - replacement dog training collar
+  - collar receiver only
+  - replacement outer cover
+  - cover only
+  - no bed
 prefilter_limit: 300
 rerank_limit: 40
 final_peer_limit: 20

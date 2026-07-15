@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -47,10 +48,12 @@ class PeerGroupService:
         session: Session,
         knowledge_store: KnowledgeStore,
         settings: Settings,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> None:
         self.session = session
         self.knowledge_store = knowledge_store
         self.settings = settings
+        self.progress_callback = progress_callback or (lambda _phase: None)
 
     def build_context(self, product: ProductProfile, *, vision_summary: str = "") -> PreparedPeerGroupContext:
         service_started = perf_counter()
@@ -61,6 +64,7 @@ class PeerGroupService:
                 message="Real peer-group analysis requires the configured Chroma embedding function",
                 status_code=503,
             )
+        self.progress_callback("selection_started")
         selection = select_peer_group_from_prepared(
             new_product=product,
             metadata_path=self.settings.peer_metadata_path,
@@ -71,19 +75,26 @@ class PeerGroupService:
             max_reviews=self.settings.peer_max_reviews,
             vision_summary=vision_summary,
         )
+        self.progress_callback("selection_completed")
         database_started = perf_counter()
+        self.progress_callback("database_persist_started")
         self._persist(product, selection)
+        self.progress_callback("database_persist_completed")
         database_persist_duration_ms = round((perf_counter() - database_started) * 1000)
         document_build_started = perf_counter()
+        self.progress_callback("document_build_started")
         documents = build_peer_documents(
             peers=selection.match_result.peers,
             reviews=selection.reviews,
             metadata_path=self.settings.peer_metadata_path,
             reviews_path=self.settings.peer_reviews_path,
         )
+        self.progress_callback("document_build_completed")
         rag_document_build_duration_ms = round((perf_counter() - document_build_started) * 1000)
         rag_ingest_started = perf_counter()
+        self.progress_callback("rag_ingest_started")
         documents_ingested = self.knowledge_store.ingest(documents)
+        self.progress_callback("rag_ingest_completed")
         rag_ingest_duration_ms = round((perf_counter() - rag_ingest_started) * 1000)
         limitations = []
         if selection.match_result.insufficient_peer_products:

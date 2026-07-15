@@ -37,6 +37,14 @@ product and peer-review documents for selected groups.
 Every peer evidence item carries `evidence_scope=peer_product`, `peer_group_id`, `peer_product_id`, `parent_asin`,
 `match_score`, `source_file`, and `source_row`. Evidence IDs are stable and audit-visible.
 
+The offset cache may point to duplicate source rows because it preserves source truth. Online lookup removes exact
+duplicate review identities after seeking the selected ASINs and before SQLite/Chroma persistence; it does not rewrite
+or expand review text and does not require a cache rebuild.
+
+Optional product-background evidence is a separate scope with provider, source URI, context type, jurisdiction,
+effective date and query date. An empty provider result is a traceable data gap, not permission for an Agent to invent
+policy, tax, compliance, platform, or trend facts.
+
 ## Numeric boundary
 
 Peer-group SQL statistics may provide `peer_product_count`, `priced_product_count`, min/max/average/median price,

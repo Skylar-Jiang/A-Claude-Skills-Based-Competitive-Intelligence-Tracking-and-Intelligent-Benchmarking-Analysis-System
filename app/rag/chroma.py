@@ -50,10 +50,11 @@ class ChromaKnowledgeStore:
 
     def ingest_with_report(self, documents: list[KnowledgeDocument]) -> ChromaIngestReport:
         report = ChromaIngestReport(attempted=len(documents))
-        grouped: dict[KnowledgeType, list[KnowledgeDocument]] = {}
+        grouped_by_id: dict[KnowledgeType, dict[str, KnowledgeDocument]] = {}
         for document in documents:
-            grouped.setdefault(document.knowledge_type, []).append(document)
-        for knowledge_type, items in grouped.items():
+            grouped_by_id.setdefault(document.knowledge_type, {})[document.document_id] = document
+        for knowledge_type, documents_by_id in grouped_by_id.items():
+            items = list(documents_by_id.values())
             collection = self._collection(knowledge_type)
             ids: list[str] = []
             contents: list[str] = []

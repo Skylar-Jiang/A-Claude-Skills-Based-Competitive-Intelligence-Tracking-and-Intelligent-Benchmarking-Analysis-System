@@ -31,7 +31,7 @@ def test_initial_migration_matches_current_sqlalchemy_metadata(tmp_path: Path) -
         }
         assert migrated_indexes == metadata_indexes
     with engine.connect() as connection:
-        assert connection.scalar(text("select version_num from alembic_version")) == "20260714_0001"
+        assert connection.scalar(text("select version_num from alembic_version")) == "20260715_0002"
         context = MigrationContext.configure(connection)
         assert compare_metadata(context, Base.metadata) == []
     engine.dispose()

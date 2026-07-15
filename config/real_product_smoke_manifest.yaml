@@ -1,0 +1,93 @@
+version: 1
+purpose: lightweight_real_peer_matching_validation_only
+products:
+  - case_id: cat_water_fountain
+    name: 3L Stainless Steel Cat Water Fountain with Quiet Circulation
+    category: pet water fountain
+    description: Complete automatic drinking fountain for cats with a stainless steel basin and circulating water.
+    features: [stainless steel basin, circulating drinking water, quiet operation, easy cleaning]
+    use_scenarios: [indoor cat hydration]
+    target_audience: [cat owners]
+    attributes: {Target Species: Cat, Capacity: 3L}
+    target_price: 39.99
+  - case_id: automatic_pet_feeder
+    name: Timed Automatic Pet Feeder with Portion Control
+    category: automatic pet feeder
+    description: Complete programmable dry food dispenser for scheduled cat and dog meals.
+    features: [scheduled feeding, portion control, dry food dispenser, sealed hopper]
+    use_scenarios: [automatic daily feeding]
+    target_audience: [cat owners, dog owners]
+    attributes: {Target Species: Cat, Product Type: Automatic Feeder}
+    target_price: 49.99
+  - case_id: dog_harness
+    name: Adjustable No Pull Dog Harness with Reflective Straps
+    category: dog harness
+    description: Complete wearable walking harness for dogs with chest adjustment and reflective trim.
+    features: [no pull chest design, adjustable straps, reflective trim, leash attachment]
+    use_scenarios: [dog walking, outdoor training]
+    target_audience: [dog owners]
+    attributes: {Target Species: Dog, Product Type: Walking Harness}
+    target_price: 24.99
+  - case_id: cat_litter_box
+    name: Automatic Self Cleaning Cat Litter Box with Waste Drawer
+    category: automatic self cleaning cat litter box
+    description: Complete automatic litter toilet that separates waste into a removable drawer after cat use.
+    features: [automatic self cleaning, waste drawer, safety sensors, odor control]
+    use_scenarios: [indoor cat toileting]
+    target_audience: [cat owners]
+    attributes: {Target Species: Cat, Product Type: Automatic Self Cleaning Litter Box}
+    target_price: 299.99
+  - case_id: orthopedic_dog_bed
+    name: Orthopedic Memory Foam Dog Bed with Washable Cover
+    category: orthopedic dog bed
+    description: Complete cushioned sleeping bed for dogs with supportive foam and a removable cover.
+    features: [memory foam support, washable cover, nonslip base, raised edge]
+    use_scenarios: [indoor dog sleeping, joint support]
+    target_audience: [dog owners]
+    attributes: {Target Species: Dog, Product Type: Orthopedic Bed}
+    target_price: 59.99
+  - case_id: cat_scratching_post
+    name: Tall Sisal Cat Scratching Post with Stable Base
+    category: cat scratching post
+    description: Complete freestanding scratching post for indoor cats with sisal wrapping and a stable base.
+    features: [sisal scratching surface, tall post, stable base, indoor enrichment]
+    use_scenarios: [indoor cat scratching]
+    target_audience: [cat owners]
+    attributes: {Target Species: Cat, Product Type: Scratching Post}
+    target_price: 32.99
+  - case_id: pet_carrier
+    name: Soft Sided Airline Approved Pet Carrier for Cats and Small Dogs
+    category: pet carrier
+    description: Complete portable travel carrier with ventilation panels and secure zipper closures.
+    features: [soft sided carrier, airline travel, mesh ventilation, shoulder strap]
+    use_scenarios: [pet travel, veterinary visits]
+    target_audience: [cat owners, small dog owners]
+    attributes: {Target Species: Cat; Dog, Product Type: Soft Pet Carrier}
+    target_price: 36.99
+  - case_id: dog_grooming_clippers
+    name: Low Noise Cordless Dog Grooming Clippers Kit
+    category: dog grooming clippers
+    description: Complete electric clipper tool for trimming dog coats at home.
+    features: [cordless clippers, low noise motor, adjustable cutting length, grooming tool]
+    use_scenarios: [home dog grooming, coat trimming]
+    target_audience: [dog owners, pet groomers]
+    attributes: {Target Species: Dog, Product Type: Electric Grooming Clippers}
+    target_price: 42.99
+  - case_id: aquarium_heater
+    name: Adjustable Submersible Aquarium Heater with Temperature Control
+    category: aquarium heater
+    description: Complete submersible water heater for maintaining fish tank temperature.
+    features: [adjustable temperature, submersible heater, thermostat control, fish tank use]
+    use_scenarios: [freshwater aquarium temperature control]
+    target_audience: [fish keepers]
+    attributes: {Target Species: Fish, Product Type: Aquarium Heater}
+    target_price: 27.99
+  - case_id: dog_training_collar
+    name: Waterproof Rechargeable Dog Training Collar with Remote
+    category: dog training collar
+    description: Complete wearable remote training collar system for dogs.
+    features: [remote training control, waterproof collar, rechargeable receiver, adjustable levels]
+    use_scenarios: [outdoor dog training, behavior training]
+    target_audience: [dog owners, dog trainers]
+    attributes: {Target Species: Dog, Product Type: Remote Training Collar}
+    target_price: 44.99

@@ -109,6 +109,8 @@ def test_exporter_writes_versioned_structured_json_and_markdown(tmp_path: Path) 
     assert "Content playbook" in markdown
     assert "market-1" in markdown
     assert DEMO_DISCLAIMER in markdown
+    assert payload["section_index"]["executive_summary"]["section_id"] == "executive-summary"
+    assert '<a id="executive-summary"></a>' in markdown
 
 
 def test_real_report_uses_unlisted_product_peer_group_sections_without_scaffold_text(tmp_path: Path) -> None:
@@ -189,3 +191,6 @@ def test_real_report_uses_unlisted_product_peer_group_sections_without_scaffold_
     assert "DEMO" not in markdown
     assert "Scaffold" not in markdown
     assert "当前商品反馈" not in markdown
+    assert report.section_index["new_product_overview"].section_id == "new-product-overview"
+    assert '<a id="new-product-overview"></a>' in markdown
+    assert '<a id="peer-market-product-analysis"></a>' in markdown

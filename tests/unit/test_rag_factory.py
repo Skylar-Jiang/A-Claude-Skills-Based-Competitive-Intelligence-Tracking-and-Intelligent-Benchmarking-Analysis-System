@@ -36,6 +36,22 @@ def test_app_uses_injected_knowledge_store_factory(tmp_path: Path) -> None:
     assert response.status_code == 200
 
 
+def test_real_app_defers_default_chroma_creation_to_background_worker(tmp_path: Path) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url=f"sqlite:///{tmp_path / 'deferred.db'}",
+        report_dir=tmp_path / "reports",
+        upload_dir=tmp_path / "uploads",
+        chroma_dir=tmp_path / "chroma",
+        chroma_persist_dir=tmp_path / "chroma",
+        rag_use_chroma=True,
+        embedding_model=None,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        assert isinstance(client.app.state.knowledge_store, InMemoryKnowledgeStore)
+
+
 def test_qwen_text_embedding_uses_qwen_credentials_and_supported_batch_size() -> None:
     settings = Settings(
         _env_file=None,

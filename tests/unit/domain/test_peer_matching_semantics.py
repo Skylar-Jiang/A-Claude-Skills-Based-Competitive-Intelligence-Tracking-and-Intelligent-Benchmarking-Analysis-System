@@ -8,6 +8,7 @@ from app.domain.peer_matching import (
     CatalogProduct,
     PeerMatchConfig,
     PeerMatcher,
+    load_peer_match_config,
     rule_prefilter,
 )
 from app.domain.product_catalog import ProductCatalog
@@ -108,6 +109,53 @@ def _write_catalog(path: Path, products: list[CatalogProduct]) -> None:
             }
         )
     path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+
+def test_config_excludes_realistic_filter_replacement_pole_and_receiver_only_titles() -> None:
+    signature = CandidateProductSignature.from_product(_candidate())
+    config = load_peer_match_config(Path("config/peer_matching.yaml"))
+    complete = _product(
+        "COMPLETE",
+        "3L Stainless Steel Cat Water Fountain with 3 Filters",
+        description="Complete circulating drinking fountain.",
+        features=["stainless basin", "circulating water"],
+        categories=["Pet Supplies", "Feeding & Watering"],
+    )
+    accessories = [
+        _product(
+            "FILTERS",
+            "Cat Water Fountain Filters 12 Pack for Stainless Steel Pet Fountain",
+            description="Carbon filter replacements.",
+            features=["filter media"],
+            categories=["Pet Supplies", "Fountain Supplies"],
+        ),
+        _product(
+            "POLE",
+            "Natural Sisal Spare Cat Scratching Post Replacement Pole",
+            description="Replacement pole for a cat tree.",
+            features=["sisal replacement"],
+            categories=["Pet Supplies", "Cat Furniture Parts"],
+        ),
+        _product(
+            "RECEIVER",
+            "Replacement Dog Training Collar Receiver Only Without Remote",
+            description="Single replacement receiver.",
+            features=["receiver only"],
+            categories=["Pet Supplies", "Training Collar Parts"],
+        ),
+        _product(
+            "COVER",
+            "Replacement Outer Cover (Cover ONLY - NO Bed) for Orthopedic Dog Bed",
+            description="Washable replacement cover.",
+            features=["fabric cover"],
+            categories=["Pet Supplies", "Dog Bed Covers"],
+        ),
+    ]
+
+    result = rule_prefilter(signature, [complete, *accessories], config)
+
+    assert [item.product.parent_asin for item in result.candidates] == ["COMPLETE"]
+    assert result.excluded_accessory_count == 4
 
 
 def test_different_category_text_can_recall_and_match_same_terminal_product(tmp_path: Path) -> None:

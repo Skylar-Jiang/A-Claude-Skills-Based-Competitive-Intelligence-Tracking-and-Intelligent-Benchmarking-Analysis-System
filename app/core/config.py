@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     peer_cache_dir: Path = Path("data/demo/cache")
     peer_match_config_path: Path = Path("config/peer_matching.yaml")
     peer_max_reviews: int = 300
+    run_worker_count: int = Field(default=2, ge=1, le=8)
+    sse_poll_interval_seconds: float = Field(default=0.1, gt=0, le=5)
+    sse_heartbeat_seconds: float = Field(default=10, gt=0, le=60)
     log_level: str = "INFO"
     default_data_mode: str = Field(default="demo")
 

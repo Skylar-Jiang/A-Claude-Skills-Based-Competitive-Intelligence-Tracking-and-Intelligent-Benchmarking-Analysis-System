@@ -1,6 +1,7 @@
+import asyncio
 import json
-from collections.abc import Iterator
 from pathlib import Path
+from time import monotonic
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
@@ -9,16 +10,19 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.api.responses import API_ERROR_RESPONSES, success
-from app.core.enums import FileType
+from app.core.enums import FileType, RunStatus
+from app.db.repositories.sqlalchemy import SqlAlchemyAnalysisRepository
 from app.schemas.analysis import AnalysisRunCreate, AnalysisRunRead, FeedbackCreate
 from app.schemas.api import ConversationRead, FeedbackAccepted, HealthRead, KnowledgeRebuildRead
 from app.schemas.common import ApiResponse
 from app.schemas.product import ProductCreate, ProductFileRead, ProductProfile
-from app.schemas.report import FinalReport
+from app.schemas.report import FinalReport, ReportRollbackRequest, ReportSupportRequest
 from app.services.analysis_service import AnalysisService
 from app.services.conversation_service import ConversationService
 from app.services.knowledge_service import KnowledgeService
 from app.services.product_service import ProductService
+from app.services.report_support_service import ReportSupportService
+from app.workflows.metadata import agent_frontend_view, workflow_metadata
 
 router = APIRouter(prefix="/api/v1")
 DbSession = Annotated[Session, Depends(get_db)]
@@ -33,6 +37,7 @@ def analysis_service(request: Request, session: Session) -> AnalysisService:
         report_dir=request.app.state.settings.report_dir,
         settings=request.app.state.settings,
         statistics_provider=request.app.state.statistics_provider_factory(session),
+        background_registry=request.app.state.background_registry,
     )
 
 
@@ -98,7 +103,7 @@ def add_product_file(
 
 @router.post(
     "/analysis-runs",
-    status_code=201,
+    status_code=202,
     summary="Run a TradePilot analysis workflow",
     response_model=ApiResponse[AnalysisRunRead],
     responses=API_ERROR_RESPONSES,
@@ -106,8 +111,9 @@ def add_product_file(
 def create_analysis_run(
     request: Request, payload: AnalysisRunCreate, session: DbSession
 ):  # type: ignore[no-untyped-def]
-    run = analysis_service(request, session).start(payload)
-    return success(request, run, status_code=201, data_mode=payload.data_mode.value)
+    run = analysis_service(request, session).create(payload)
+    request.app.state.run_dispatcher.submit(run.run_id)
+    return success(request, run, status_code=202, data_mode=payload.data_mode.value)
 
 
 @router.get(
@@ -119,6 +125,121 @@ def create_analysis_run(
 def get_analysis_run(request: Request, run_id: str, session: DbSession):  # type: ignore[no-untyped-def]
     run = analysis_service(request, session).get_run(run_id)
     return success(request, run, data_mode=run.data_mode.value)
+
+
+@router.get(
+    "/analysis-runs/{run_id}/timeline",
+    summary="Get the persisted workflow stage timeline",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def get_analysis_timeline(request: Request, run_id: str, session: DbSession):  # type: ignore[no-untyped-def]
+    service = analysis_service(request, session)
+    run = service.get_run(run_id)
+    stages = [item.model_dump(mode="json") for item in service.list_stages(run_id)]
+    return success(
+        request,
+        {"run_id": run_id, "status": run.status.value, "stages": stages},
+        data_mode=run.data_mode.value,
+    )
+
+
+@router.get(
+    "/workflow/metadata",
+    summary="Get stable workflow nodes, responsibilities, order and edges",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def get_workflow_metadata(request: Request):  # type: ignore[no-untyped-def]
+    return success(request, workflow_metadata(request.app.state.settings))
+
+
+@router.get(
+    "/analysis-runs/{run_id}/status",
+    summary="Get the current persisted run status",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def get_analysis_status(request: Request, run_id: str, session: DbSession):  # type: ignore[no-untyped-def]
+    run = analysis_service(request, session).get_run(run_id)
+    return success(
+        request,
+        {
+            "run_id": run.run_id,
+            "status": run.status.value,
+            "current_node": run.current_node,
+            "report_id": run.report_id,
+            "error": run.state.get("error"),
+        },
+        data_mode=run.data_mode.value,
+    )
+
+
+@router.get(
+    "/analysis-runs/{run_id}/agents",
+    summary="Get persisted Agent outputs and timings",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def get_analysis_agents(request: Request, run_id: str, session: DbSession):  # type: ignore[no-untyped-def]
+    service = analysis_service(request, session)
+    run = service.get_run(run_id)
+    agents = [
+        agent_frontend_view(item, run=run, settings=request.app.state.settings)
+        for item in service.list_agent_outputs(run_id)
+    ]
+    return success(request, {"run_id": run_id, "agents": agents}, data_mode=run.data_mode.value)
+
+
+@router.get(
+    "/analysis-runs/{run_id}/peers",
+    summary="Get the selected peer products for this analysis group",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def get_analysis_peers(request: Request, run_id: str, session: DbSession):  # type: ignore[no-untyped-def]
+    run = analysis_service(request, session).get_run(run_id)
+    return success(
+        request,
+        {
+            "run_id": run_id,
+            "peer_group_id": run.state.get("peer_group_id"),
+            "selected_parent_asins": run.state.get("selected_parent_asins", []),
+            "peers": run.state.get("selected_peer_products", []),
+        },
+        data_mode=run.data_mode.value,
+    )
+
+
+@router.get(
+    "/analysis-runs/{run_id}/evidence",
+    summary="Get persisted evidence references",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def get_analysis_evidence(request: Request, run_id: str, session: DbSession):  # type: ignore[no-untyped-def]
+    service = analysis_service(request, session)
+    run = service.get_run(run_id)
+    return success(
+        request,
+        {"run_id": run_id, "evidence": service.list_evidence(run_id)},
+        data_mode=run.data_mode.value,
+    )
+
+
+@router.get(
+    "/analysis-runs/{run_id}/audit",
+    summary="Get the persisted evidence-audit result",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def get_analysis_audit(request: Request, run_id: str, session: DbSession):  # type: ignore[no-untyped-def]
+    run = analysis_service(request, session).get_run(run_id)
+    return success(
+        request,
+        {"run_id": run_id, "audit": run.state.get("audit_result")},
+        data_mode=run.data_mode.value,
+    )
 
 
 @router.get(
@@ -149,28 +270,54 @@ def get_analysis_metadata(request: Request, run_id: str, session: DbSession):  #
 )
 def stream_analysis_events(request: Request, run_id: str, session: DbSession) -> StreamingResponse:
     service = analysis_service(request, session)
-    run = service.get_run(run_id)
-    outputs = service.list_agent_outputs(run_id)
+    service.get_run(run_id)
+    raw_last_event_id = request.headers.get("last-event-id", "0")
+    cursor = int(raw_last_event_id) if raw_last_event_id.isdigit() else 0
+    settings = request.app.state.settings
+    session_factory = request.app.state.session_factory
 
-    def events() -> Iterator[str]:
-        for output in outputs:
-            payload = {
-                "run_id": run_id,
-                "agent_name": output.agent_name,
-                "status": output.status.value,
-                "started_at": output.started_at.isoformat() if output.started_at else None,
-                "completed_at": output.completed_at.isoformat() if output.completed_at else None,
-                "duration_ms": output.duration_ms,
+    async def events():  # type: ignore[no-untyped-def]
+        nonlocal cursor
+        heartbeat_at = monotonic()
+        while True:
+            with session_factory() as poll_session:
+                repository = SqlAlchemyAnalysisRepository(poll_session)
+                batch = repository.list_events(run_id, after_event_id=cursor)
+                run = repository.get_run(run_id)
+            for event in batch:
+                cursor = event.event_id
+                data = {
+                    "run_id": run_id,
+                    "event_id": event.event_id,
+                    "stage_key": event.stage_key,
+                    "created_at": event.created_at.isoformat(),
+                    **event.payload,
+                }
+                yield (
+                    f"id: {event.event_id}\n"
+                    f"event: {event.event_type}\n"
+                    f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                )
+                heartbeat_at = monotonic()
+            terminal = run.status in {
+                RunStatus.SUCCEEDED,
+                RunStatus.FAILED,
+                RunStatus.MANUAL_REVIEW,
             }
-            yield f"event: agent_completed\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-        completed = {
-            "run_id": run_id,
-            "status": run.status.value,
-            "workflow_metadata": run.state.get("workflow_metadata", {}),
-        }
-        yield f"event: workflow_completed\ndata: {json.dumps(completed, ensure_ascii=False)}\n\n"
+            if terminal and not batch:
+                return
+            if not batch and monotonic() - heartbeat_at >= settings.sse_heartbeat_seconds:
+                yield ": heartbeat\n\n"
+                heartbeat_at = monotonic()
+            if await request.is_disconnected():
+                return
+            await asyncio.sleep(settings.sse_poll_interval_seconds)
 
-    return StreamingResponse(events(), media_type="text/event-stream")
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post(
@@ -225,13 +372,70 @@ def get_report_json(request: Request, report_id: str, session: DbSession) -> JSO
 
 
 @router.post(
+    "/reports/{report_id}/support",
+    summary="Explain or locally edit an evidence-grounded report section",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def support_report(
+    request: Request,
+    report_id: str,
+    payload: ReportSupportRequest,
+    session: DbSession,
+):  # type: ignore[no-untyped-def]
+    result = ReportSupportService(session).support(report_id, payload)
+    return success(request, result)
+
+
+@router.get(
+    "/reports/{report_id}/versions",
+    summary="List immutable report versions",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def list_report_versions(request: Request, report_id: str, session: DbSession):  # type: ignore[no-untyped-def]
+    versions = ReportSupportService(session).versions(report_id)
+    summaries = [
+        {
+            "report_id": item.report_id,
+            "version": item.version,
+            "parent_report_id": item.parent_report_id,
+            "changed_section_ids": item.changed_section_ids,
+            "created_at": item.created_at.isoformat(),
+        }
+        for item in versions
+    ]
+    return success(request, {"run_id": versions[0].run_id, "versions": summaries})
+
+
+@router.post(
+    "/reports/{report_id}/rollback",
+    summary="Create a new report version from an immutable historical version",
+    response_model=ApiResponse[FinalReport],
+    responses=API_ERROR_RESPONSES,
+)
+def rollback_report(
+    request: Request,
+    report_id: str,
+    payload: ReportRollbackRequest,
+    session: DbSession,
+):  # type: ignore[no-untyped-def]
+    report = ReportSupportService(session).rollback(
+        report_id,
+        target_version=payload.target_version,
+        reason=payload.reason,
+    )
+    return success(request, report, data_mode="demo" if report.is_demo else "real")
+
+
+@router.post(
     "/knowledge/rebuild",
     summary="Rebuild lightweight knowledge store",
     response_model=ApiResponse[KnowledgeRebuildRead],
     responses=API_ERROR_RESPONSES,
 )
 def rebuild_knowledge(request: Request, session: DbSession):  # type: ignore[no-untyped-def]
-    count = KnowledgeService(session, request.app.state.knowledge_store).rebuild()
+    count = KnowledgeService(session, request.app.state.knowledge_store_factory()).rebuild()
     return success(request, {"documents_ingested": count, "implementation_status": "production"})
 
 

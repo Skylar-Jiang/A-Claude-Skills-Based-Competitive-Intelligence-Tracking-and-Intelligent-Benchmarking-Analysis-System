@@ -24,6 +24,7 @@ class ConversationMessageRead(BaseModel):
     message_id: str
     role: str
     content: str
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class ConversationRead(BaseModel):

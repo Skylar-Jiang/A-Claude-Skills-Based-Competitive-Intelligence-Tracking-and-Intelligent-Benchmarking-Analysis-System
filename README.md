@@ -16,6 +16,14 @@ LangGraph workflow and never falls back to Demo or Mock.
 Demo mode remains available for deterministic compatibility tests. Real mode requires both provider keys, prepared
 offline lookup caches, Chroma, and the real source JSONL files.
 
+## Data modes and index scope
+
+- **Demo mode** uses deterministic fixtures for tests and local contract checks.
+- **Real peer-group mode** is the production unlisted-product path. It reuses the prepared lightweight catalog and
+  review offsets, embeds only bounded candidates and selected peer documents, and does not require the full index.
+- **Full offline index mode** is a separate exact-product/evaluation workflow. It is retained for experiments and must
+  not be rebuilt or modified by peer-group API requests.
+
 ## Install
 
 ```powershell
@@ -61,9 +69,11 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 Health: `GET http://127.0.0.1:8000/api/v1/health`. Swagger: `/docs`.
 
 Create a `data_mode=real` product with its name, description, features, parameters, scenarios, target species/users,
-target price, and optional uploaded image. Then call `POST /api/v1/analysis-runs` with the returned `product_id`.
-Metadata, SSE events, Markdown, and JSON are available from the run/report endpoints documented in
-`docs/api-contract.md`.
+target price, and optional uploaded image. `POST /api/v1/analysis-runs` returns `202` immediately; poll `/status` or
+consume the persisted `/events` SSE stream, which supports `Last-Event-ID` replay. Timeline, Agent outputs, peers,
+evidence, audit, metadata, Markdown, JSON, immutable report versions, evidence explanations, local section edits and
+rollback are available from the endpoints in `docs/api-contract.md`. Frontend integration and report-support rules are
+documented in `docs/frontend-integration.md` and `docs/report-support.md`.
 
 ## Verify
 

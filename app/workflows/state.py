@@ -3,6 +3,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
+from app.background.contracts import BackgroundResult
 from app.core.enums import DataMode, RetrievalScope
 from app.schemas.analysis import AuditResult, OperationPlan, ProductMarketAnalysis, UserInsight
 from app.schemas.common import AgentExecution, DataGap, utc_now
@@ -37,6 +38,8 @@ class TradePilotState(BaseModel):
     vision_analysis: dict[str, Any] | None = None
     peer_selection_metadata: dict[str, Any] = Field(default_factory=dict)
     workflow_metadata: dict[str, Any] = Field(default_factory=dict)
+    background_context: BackgroundResult | None = None
+    background_evidence: list[EvidenceReference] = Field(default_factory=list)
     target_market: str = ""
     user_constraints: dict[str, Any] = Field(default_factory=dict)
     product_market_analysis: ProductMarketAnalysis | None = None

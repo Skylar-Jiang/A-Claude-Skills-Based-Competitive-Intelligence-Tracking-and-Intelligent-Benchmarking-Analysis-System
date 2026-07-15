@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -86,6 +86,33 @@ class AnalysisRun(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 
+class AnalysisRunStage(Base):
+    __tablename__ = "analysis_run_stages"
+    __table_args__ = (UniqueConstraint("run_id", "stage_key", name="uq_analysis_run_stage"),)
+
+    stage_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("analysis_runs.run_id"), index=True)
+    stage_key: Mapped[str] = mapped_column(String(64))
+    sequence: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24), index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    error_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+
+class AnalysisEvent(Base):
+    __tablename__ = "analysis_events"
+
+    event_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("analysis_runs.run_id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    stage_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class AgentOutput(Base):
     __tablename__ = "agent_outputs"
 
@@ -118,10 +145,15 @@ class Report(Base):
 
     report_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     run_id: Mapped[str] = mapped_column(ForeignKey("analysis_runs.run_id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    parent_report_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    changed_section_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    change_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     format: Mapped[str] = mapped_column(String(16))
     file_path: Mapped[str] = mapped_column(Text)
     is_demo: Mapped[bool] = mapped_column(Boolean)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class Conversation(Base):
@@ -139,3 +171,5 @@ class Message(Base):
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.conversation_id"), index=True)
     role: Mapped[str] = mapped_column(String(24))
     content: Mapped[str] = mapped_column(Text)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

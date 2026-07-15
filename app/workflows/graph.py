@@ -25,6 +25,7 @@ from app.statistics.stub import ScaffoldStatisticsProvider
 from app.workflows.state import TradePilotState
 
 PersistCallback = Callable[[TradePilotState], dict[str, object]]
+ProgressCallback = Callable[[str, str, dict[str, object]], None]
 
 
 def _merge_data_gaps(*groups: list[DataGap]) -> list[DataGap]:
@@ -69,6 +70,7 @@ class TradePilotWorkflow:
         operations_decision_agent: OperationsDecisionAgent | None = None,
         evidence_audit_agent: EvidenceAuditAgent | None = None,
         persist_callback: PersistCallback | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> None:
         self.knowledge_store = knowledge_store
         self.retrieval_pipeline = RetrievalPipeline(knowledge_store)
@@ -82,18 +84,22 @@ class TradePilotWorkflow:
         self.operations_decision_agent = operations_decision_agent or OperationsDecisionAgent()
         self.evidence_audit_agent = evidence_audit_agent or EvidenceAuditAgent()
         self.persist_callback = persist_callback
+        self.progress_callback = progress_callback
         self.compiled = self._build_graph().compile()
 
     def _build_graph(self) -> StateGraph:
         graph = StateGraph(TradePilotState)
-        graph.add_node("input_validator", self._input_validator)
-        graph.add_node("product_normalizer", self._product_normalizer)
-        graph.add_node("statistics_provider", self._statistics_provider)
-        graph.add_node("product_market_agent", self._product_market)
-        graph.add_node("user_insight_agent", self._user_insight)
-        graph.add_node("operations_decision_agent", self._operations_decision)
-        graph.add_node("evidence_audit_agent", self._evidence_audit)
-        graph.add_node("persist_and_export", self._persist_and_export)
+        graph.add_node("input_validator", self._tracked("input_validator", self._input_validator))
+        graph.add_node("product_normalizer", self._tracked("product_normalizer", self._product_normalizer))
+        graph.add_node("statistics_provider", self._tracked("statistics_provider", self._statistics_provider))
+        graph.add_node("product_market_agent", self._tracked("product_market_agent", self._product_market))
+        graph.add_node("user_insight_agent", self._tracked("user_insight_agent", self._user_insight))
+        graph.add_node(
+            "operations_decision_agent",
+            self._tracked("operations_decision_agent", self._operations_decision),
+        )
+        graph.add_node("evidence_audit_agent", self._tracked("evidence_audit_agent", self._evidence_audit))
+        graph.add_node("persist_and_export", self._tracked("persist_and_export", self._persist_and_export))
         graph.add_edge(START, "input_validator")
         graph.add_edge("input_validator", "product_normalizer")
         graph.add_edge("product_normalizer", "statistics_provider")
@@ -112,6 +118,35 @@ class TradePilotWorkflow:
         graph.add_edge("persist_and_export", END)
         return graph
 
+    def _tracked(self, node_name: str, node: Callable):  # type: ignore[no-untyped-def]
+        def invoke(state: TradePilotState) -> dict[str, object]:
+            if self.progress_callback:
+                self.progress_callback(node_name, "started", {"status": "running"})
+            try:
+                result = node(state)
+            except Exception as exc:
+                if self.progress_callback:
+                    self.progress_callback(
+                        node_name,
+                        "failed",
+                        {"status": "failed", "error_type": type(exc).__name__},
+                    )
+                raise
+            if self.progress_callback:
+                executions = result.get("node_status")
+                execution = executions.get(node_name) if isinstance(executions, dict) else None
+                self.progress_callback(
+                    node_name,
+                    "completed",
+                    {
+                        "status": "succeeded",
+                        "duration_ms": getattr(execution, "duration_ms", None),
+                    },
+                )
+            return result
+
+        return invoke
+
     def invoke(self, state: TradePilotState) -> dict[str, object]:
         return self.compiled.invoke(state)
 
@@ -129,7 +164,7 @@ class TradePilotWorkflow:
         product = state.product_profile.model_copy(
             update={"name": state.product_profile.name.strip(), "category": state.product_profile.category.strip()}
         )
-        evidence = []
+        evidence = list(state.background_evidence)
         gaps = []
         for knowledge_type in KnowledgeType:
             result = self.knowledge_store.retrieve(
@@ -240,6 +275,7 @@ class TradePilotWorkflow:
                 selected_parent_asins=state.selected_parent_asins,
                 selected_peer_products=state.selected_peer_products,
                 user_constraints=state.user_constraints,
+                background_context=state.background_context,
             )
         )
         completed_at = utc_now()
@@ -298,6 +334,7 @@ class TradePilotWorkflow:
                 peer_group_id=state.peer_group_id,
                 selected_parent_asins=state.selected_parent_asins,
                 user_constraints=state.user_constraints,
+                background_context=state.background_context,
             )
         )
         completed_at = utc_now()
@@ -325,6 +362,7 @@ class TradePilotWorkflow:
                 evidence=state.rag_evidence,
                 statistics=state.statistics_result,
                 peer_group_id=state.peer_group_id,
+                background_context=state.background_context,
             )
         )
         completed_at = utc_now()

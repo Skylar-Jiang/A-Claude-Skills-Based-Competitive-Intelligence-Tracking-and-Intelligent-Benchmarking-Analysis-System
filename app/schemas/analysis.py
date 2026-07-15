@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -9,6 +9,7 @@ from app.core.enums import (
     DataMode,
     DataOrigin,
     ImplementationStatus,
+    RunStageStatus,
     RunStatus,
 )
 from app.schemas.common import Conclusion, DataGap
@@ -106,6 +107,12 @@ class AnalysisRunCreate(BaseModel):
     session_id: str | None = None
     thread_id: str | None = None
     target_market: str | None = None
+    jurisdiction: str = ""
+    platform: str = ""
+    background_context_types: list[str] = Field(default_factory=list)
+    background_provider: str | None = None
+    effective_date: date | None = None
+    query_date: date | None = None
     user_constraints: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -133,3 +140,23 @@ class AgentOutputRead(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     duration_ms: int | None = None
+
+
+class RunStageRead(BaseModel):
+    stage_key: str
+    sequence: int
+    status: RunStageStatus
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    duration_ms: int | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    error: dict[str, Any] | None = None
+
+
+class AnalysisEventRead(BaseModel):
+    event_id: int
+    run_id: str
+    event_type: str
+    stage_key: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime

@@ -58,7 +58,8 @@ class ProductMarketAgent(BaseScaffoldAgent[ProductMarketAgentInput, ProductMarke
                 (
                     "human",
                     "ProductProfile:\n{product}\n\nPeerGroupContext:\n{peer_context}\n\n"
-                    "StatisticsResult:\n{statistics}\n\nEvidence:\n{evidence}\n",
+                    "ProductBackgroundContext:\n{background}\n\nStatisticsResult:\n{statistics}\n\n"
+                    "Evidence:\n{evidence}\n",
                 ),
             ]
         )
@@ -157,6 +158,11 @@ class ProductMarketAgent(BaseScaffoldAgent[ProductMarketAgentInput, ProductMarke
         return {
             "product": context.product.model_dump_json(indent=2),
             "peer_context": self._peer_context(context),
+            "background": (
+                context.background_context.model_dump_json(indent=2)
+                if context.background_context
+                else "null"
+            ),
             "statistics": context.statistics.model_dump_json(indent=2),
             "evidence": self._format_evidence(context.evidence),
         }

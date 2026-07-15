@@ -5,12 +5,38 @@ from uuid import uuid4
 
 from app.core.enums import AuditStatus, DataOrigin
 from app.schemas.common import DataGap, utc_now
-from app.schemas.report import DEMO_DISCLAIMER, REAL_DISCLAIMER, FinalReport
+from app.schemas.report import (
+    DEMO_DISCLAIMER,
+    REAL_DISCLAIMER,
+    FinalReport,
+    ReportSectionDescriptor,
+)
 from app.skills.operation_content import OperationContentSkill
 from app.workflows.state import TradePilotState
 
 
 class ReportExporter:
+    SECTION_TITLES = {
+        "executive_summary": "Executive summary",
+        "product_profile": "Product profile",
+        "product_market_analysis": "Product market analysis",
+        "user_insight": "User insight",
+        "operation_plan": "Operation plan",
+        "content_playbook": "Content playbook",
+        "audit_result": "Evidence audit",
+        "data_limitations": "Data limitations",
+        "evidence_index": "Evidence index",
+        "next_actions": "Next actions",
+        "new_product_overview": "新商品概况",
+        "peer_market_product_analysis": "同类市场商品分析",
+        "peer_market_user_insights": "同类市场用户洞察",
+        "feature_to_peer_concern_mapping": "商品特征与同类用户关注点的对应分析",
+        "prelaunch_considerations": "新商品上市前注意事项",
+        "data_supported_conclusions": "数据支持的结论",
+        "reasoned_hypotheses": "基于商品属性的待验证假设",
+        "data_limitations_and_evidence_index": "数据限制与证据索引",
+    }
+
     def __init__(self, report_dir: Path, content_skill: OperationContentSkill | None = None) -> None:
         self.report_dir = report_dir
         self.content_skill = content_skill or OperationContentSkill.from_default()
@@ -34,6 +60,7 @@ class ReportExporter:
             is_demo=origin is DataOrigin.DEMO,
             disclaimer=DEMO_DISCLAIMER if origin is DataOrigin.DEMO else REAL_DISCLAIMER,
             sections=sections,
+            section_index=self._section_index(sections),
             markdown_path=str(markdown_path),
             json_path=str(json_path),
             created_at=utc_now(),
@@ -42,8 +69,31 @@ class ReportExporter:
             json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        markdown_path.write_text(self._markdown(report), encoding="utf-8")
+        markdown_path.write_text(self._markdown_with_anchors(report), encoding="utf-8")
         return report
+
+    @classmethod
+    def _section_index(cls, sections: dict[str, Any]) -> dict[str, ReportSectionDescriptor]:
+        return {
+            key: ReportSectionDescriptor(
+                section_id=key.replace("_", "-"),
+                title=cls.SECTION_TITLES.get(key, key.replace("_", " ").title()),
+            )
+            for key in sections
+        }
+
+    @classmethod
+    def _markdown_with_anchors(cls, report: FinalReport) -> str:
+        markdown = cls._markdown(report)
+        for descriptor in report.section_index.values():
+            heading = f"## {descriptor.title}"
+            if heading in markdown:
+                markdown = markdown.replace(
+                    heading,
+                    f'<a id="{descriptor.section_id}"></a>\n\n{heading}',
+                    1,
+                )
+        return markdown
 
     def _sections(self, state: TradePilotState) -> dict[str, Any]:
         plan = state.operation_plan

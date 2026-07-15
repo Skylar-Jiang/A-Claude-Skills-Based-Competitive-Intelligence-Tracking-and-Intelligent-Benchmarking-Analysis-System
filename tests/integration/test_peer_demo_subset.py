@@ -127,14 +127,12 @@ def test_peer_subset_has_one_unreviewed_new_product_and_traceable_real_peers(tmp
     peers = [_peer_metadata(index) for index in range(12)]
     accessories = [_accessory_metadata(index) for index in range(2)]
     _write_jsonl(metadata_path, [*peers, *accessories])
-    _write_jsonl(
-        reviews_path,
-        [
-            _review(str(product["parent_asin"]), review_index)
-            for product in [*peers, *accessories]
-            for review_index in range(5)
-        ],
-    )
+    review_rows = [
+        _review(str(product["parent_asin"]), review_index)
+        for product in [*peers, *accessories]
+        for review_index in range(5)
+    ]
+    _write_jsonl(reviews_path, [*review_rows, review_rows[0]])
     runtime_dir = tmp_path / "demo"
 
     first = prepare_peer_group_demo_subset(

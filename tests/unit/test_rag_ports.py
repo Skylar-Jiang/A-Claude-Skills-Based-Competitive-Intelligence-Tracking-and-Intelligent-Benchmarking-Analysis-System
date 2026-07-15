@@ -143,6 +143,31 @@ def test_minimal_chroma_adapter_uses_injected_embedding_without_download(tmp_pat
     assert result.evidence[0].evidence_id == "chroma-demo-1"
     assert {item.name for item in store.client.list_collections()} == COLLECTION_NAMES
 
+
+def test_chroma_ingest_deduplicates_repeated_document_ids_within_one_batch(tmp_path: Path) -> None:
+    store = ChromaKnowledgeStore(tmp_path, TinyEmbedding())
+    first = KnowledgeDocument(
+        document_id="duplicate-review",
+        product_id="peer-1",
+        knowledge_type=KnowledgeType.REVIEW_INSIGHT,
+        content="Earlier duplicate content.",
+        source_name="review fixture",
+        data_origin=DataOrigin.REAL,
+        metadata={"content_hash": "earlier"},
+    )
+    latest = first.model_copy(
+        update={"content": "Latest duplicate content.", "metadata": {"content_hash": "latest"}}
+    )
+
+    report = store.ingest_with_report([first, latest])
+    collection = store._collection(KnowledgeType.REVIEW_INSIGHT)
+    stored = collection.get(ids=["duplicate-review"], include=["documents", "metadatas"])
+
+    assert report.attempted == 2
+    assert report.inserted_or_updated == 1
+    assert stored["documents"] == ["Latest duplicate content."]
+    assert stored["metadatas"][0]["content_hash"] == "latest"
+
     store.clear()
     assert store.client.list_collections() == []
 

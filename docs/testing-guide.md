@@ -34,6 +34,10 @@ Real final acceptance additionally requires:
    reliable candidate image exists, assert vision is skipped rather than substituting a peer image.
 7. Assert metadata contains matcher/embedding versions, rule/semantic thresholds, cache/matching/review timings,
    runtime SQLite persistence, RAG build/ingest/retrieval, SQL statistics, all Agent durations, and workflow duration.
+8. Run `python scripts/smoke_multi_product_matching.py` with real credentials and confirm all ten terminal-product
+   cases reuse both caches, have no orphan reviews, and contain no configured accessory-only products.
+9. Run `python scripts/real_http_e2e.py`; it verifies async polling, SSE replay, the six frontend read views, report
+   Markdown/JSON, report support, peer evidence scope, four Agents, and actual ProductMarket/UserInsight overlap.
 
 Report only actual zero exit codes. Real provider retries/failures must remain visible and must never trigger a
 Demo/Mock fallback.

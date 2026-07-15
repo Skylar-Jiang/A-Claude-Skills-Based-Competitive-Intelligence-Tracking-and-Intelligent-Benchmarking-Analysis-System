@@ -104,10 +104,11 @@ class ReviewLookup:
                     ORDER BY source_row
                     LIMIT ?
                     """,  # noqa: S608 - placeholders are generated, values remain parameterized
-                    [*selected, max_total],
+                    [*selected, max_total * 2],
                 )
             )
         result: list[IndexedReview] = []
+        seen_reviews: set[tuple[object, ...]] = set()
         with self.source_path.open("rb") as source:
             for parent_asin, source_row, byte_offset, byte_length in rows:
                 source.seek(byte_offset)
@@ -118,6 +119,17 @@ class ReviewLookup:
                     continue
                 if not isinstance(value, dict) or value.get("parent_asin") != parent_asin:
                     continue
+                review_key = (
+                    parent_asin,
+                    value.get("asin") or "",
+                    value.get("user_id") or "",
+                    value.get("timestamp") or "",
+                    value.get("title") or "",
+                    value.get("text") or "",
+                )
+                if review_key in seen_reviews:
+                    continue
+                seen_reviews.add(review_key)
                 result.append(
                     IndexedReview(
                         parent_asin=parent_asin,
@@ -125,6 +137,8 @@ class ReviewLookup:
                         record=value,
                     )
                 )
+                if len(result) >= max_total:
+                    break
         return result
 
 

@@ -51,7 +51,8 @@ class OperationsDecisionAgent(BaseScaffoldAgent[OperationsDecisionAgentInput, Op
                 (
                     "human",
                     "New product:\n{product}\n\nPeer scope:\n{peer_scope}\n\nUser constraints:\n{constraints}\n\n"
-                    "Statistics:\n{statistics}\n\nPeer market analysis:\n{market}\n\nPeer user insight:\n{insight}",
+                    "Product background:\n{background}\n\nStatistics:\n{statistics}\n\n"
+                    "Peer market analysis:\n{market}\n\nPeer user insight:\n{insight}",
                 ),
             ]
         )
@@ -74,6 +75,11 @@ class OperationsDecisionAgent(BaseScaffoldAgent[OperationsDecisionAgentInput, Op
                     }
                 ),
                 "constraints": str(context.user_constraints),
+                "background": (
+                    context.background_context.model_dump_json(indent=2)
+                    if context.background_context
+                    else "null"
+                ),
                 "statistics": context.statistics.model_dump_json(indent=2) if context.statistics else "null",
                 "market": self._compact_analysis(context.product_market_analysis),
                 "insight": self._compact_analysis(context.user_insight),

@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -49,10 +50,16 @@ def test_api_analysis_uses_injected_session_scoped_statistics_provider(tmp_path:
             "/api/v1/analysis-runs",
             json={"product_id": product_id, "data_mode": "demo"},
         )
+        run_id = run.json()["data"]["run_id"]
+        for _ in range(200):
+            persisted = client.get(f"/api/v1/analysis-runs/{run_id}").json()["data"]
+            if persisted["state"].get("statistics_result"):
+                break
+            time.sleep(0.01)
 
-    assert run.status_code == 201
+    assert run.status_code == 202
     assert provider.product_ids == [product_id]
-    assert run.json()["data"]["state"]["statistics_result"]["product_id"] == product_id
+    assert persisted["state"]["statistics_result"]["product_id"] == product_id
 
 
 def test_default_statistics_factory_returns_pet_supplies_provider() -> None:

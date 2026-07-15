@@ -22,32 +22,41 @@
 - Deterministic evidence audit for peer attribution/scope, accessories, numeric sources, hypothesis labels, evidence
   existence, semantic conflicts, and known-risk conflicts; model findings are retained as advisory warnings.
 - Persisted state/evidence/Agent timings, workflow metadata, SSE events, Markdown content, and JSON report APIs.
+- HTTP 202 background execution, ten-stage timeline, status/Agent/peer/evidence/audit frontend views, durable SSE with
+  heartbeat and `Last-Event-ID` replay.
+- Immutable report versions, evidence-grounded section explanation, guarded local edits with diffs, conversation
+  audit records, and append-only rollback.
+- Optional dated/jurisdiction-scoped product-background provider contract; the default provides no external facts.
 - Explicit failed-run persistence and no Real-to-Demo/Mock fallback.
 
 ## Validated real run (2026-07-15)
 
 - Product catalog: 161,540 rows; cold build 100,804 ms.
 - Review lookup: 594,175 rows; cold build 43,980 ms.
-- Warm preparation reuse: 2 ms.
-- Online prefilter: 300; semantic rerank: 40; final peers passing the 0.45 semantic threshold: 20; configured
-  accessory exclusions observed: 566.
+- Warm preparation reuse: 4 ms; neither cache was rebuilt during the final multi-product or HTTP runs.
+- Final HTTP online prefilter: 300; semantic rerank: 40; final peers passing the 0.45 semantic threshold: 20;
+  configured accessory exclusions observed: 137.
 - Matcher `peer-matcher-v2`, Qwen `text-embedding-v4`, rule threshold 0.2, semantic threshold 0.45; no quota fill and
-  no insufficient-peer gap in this run. Peer group: `af5fbd38-8356-5ff0-a3f4-25b5a7056929`.
-- Peer review pool: 82; runtime Chroma collections: 20 product documents and 82 review documents.
-- Final successful HTTP E2E: 71,435 ms; matching 7,699 ms; review offset reads 2 ms; complete online peer
-  service 10,400 ms; LangGraph workflow 59,406 ms.
-- Runtime SQLite peer persistence 61 ms; RAG document build 7 ms; small-Chroma ingest 2,629 ms; RAG retrieval
-  640 ms; peer SQL statistics query 3 ms.
-- ProductMarketAgent 18,264 ms; UserInsightAgent 16,873 ms; their intervals overlap.
-- OperationsDecisionAgent 36,237 ms; EvidenceAuditAgent 4,216 ms.
+  no insufficient-peer gap in this run. Peer group: `9546f2b4-d59e-5f7f-bab5-b6f7bb29a7ee`.
+- Peer review pool: 89 unique source reviews after identity deduplication; runtime Chroma collections: 20 product
+  documents and 89 review documents.
+- Final successful HTTP E2E: 60,932 ms; matching 7,100 ms; review offset reads 3 ms; complete online peer service
+  10,163 ms; LangGraph workflow 47,962 ms.
+- Runtime SQLite peer persistence 62 ms; RAG document build 14 ms; small-Chroma ingest 2,980 ms; RAG retrieval 672 ms;
+  peer SQL statistics query 2 ms.
+- ProductMarketAgent 17,026 ms; UserInsightAgent 14,591 ms; their intervals overlap.
+- OperationsDecisionAgent 25,933 ms; EvidenceAuditAgent 4,284 ms.
 - Run status `succeeded`, retry count 0, audit `warning`, manual review false.
-- Four SSE Agent events plus workflow completion; metadata, Markdown, structured report, and exported JSON returned 200.
+- Twenty-nine persisted SSE/workflow events were returned; reconnect after the first ID replayed the remaining 28.
+  Timeline, status, Agent, peer, evidence, audit, metadata, Markdown, structured report, exported JSON and report
+  support returned successfully.
 - Real report contained all required sections and no forbidden candidate-review attribution or Demo/Scaffold text.
 - Latest persisted-input real Qwen audit used all 11 supplied evidence records with no deterministic blocker and no
   manual review. Model-only attribution questions remain non-blocking advisories.
-- After integration with the latest remote full-index pipeline, final gates are `pip check`, 112 passed / 3 skipped
-  pytest, `compileall`, Ruff, and Smoke Test. The prepared-cache real HTTP E2E above passed before final artifact
-  cleanup; caches were not rebuilt after cleanup.
+- Ten-product real smoke used `text-embedding-v4` and completed in 71,099 ms. Water fountain, automatic feeder, dog
+  harness, automatic litter box, orthopedic dog bed, scratching post, pet carrier, grooming clippers, aquarium heater,
+  and training collar each selected 20 peers; review pools ranged from 69 to 95 with zero orphan associations.
+- Final deterministic regression: 140 passed, 3 skipped; `pip check`, `compileall`, Ruff and Smoke Test all passed.
 - Independent official-image smoke verified `qwen3-vl-plus` in 2,710 ms; no reliable candidate image was supplied, so
   the candidate workflow correctly skipped vision rather than using a peer image.
 

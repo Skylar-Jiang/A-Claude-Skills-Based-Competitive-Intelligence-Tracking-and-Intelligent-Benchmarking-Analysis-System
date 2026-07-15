@@ -70,7 +70,8 @@ class EvidenceAuditAgent(BaseScaffoldAgent[EvidenceAuditAgentInput, AuditResult]
                 ("system", AUDIT_SYSTEM_PROMPT),
                 (
                     "human",
-                    "Product:\n{product}\n\nPlan:\n{plan}\n\nEvidence:\n{evidence}\n\nStatistics:\n{statistics}\n"
+                    "Product:\n{product}\n\nPlan:\n{plan}\n\nEvidence:\n{evidence}\n\n"
+                    "Product background:\n{background}\n\nStatistics:\n{statistics}\n"
                     "Expected peer_group_id: {peer_group_id}",
                 ),
             ]
@@ -104,6 +105,11 @@ class EvidenceAuditAgent(BaseScaffoldAgent[EvidenceAuditAgentInput, AuditResult]
                     indent=2,
                 ),
                 "statistics": context.statistics.model_dump_json(indent=2) if context.statistics else "null",
+                "background": (
+                    context.background_context.model_dump_json(indent=2)
+                    if context.background_context
+                    else "null"
+                ),
                 "peer_group_id": context.peer_group_id or "not supplied",
             }
         )
@@ -285,6 +291,22 @@ class EvidenceAuditAgent(BaseScaffoldAgent[EvidenceAuditAgentInput, AuditResult]
             warnings.append(
                 "target_market_missing: Include the user-selected target market in positioning or next actions."
             )
+
+        if context.background_context is not None:
+            for item in context.background_context.evidence:
+                if not item.source_name or not item.source_uri:
+                    blocking.append(
+                        f"background_provenance_missing: Background evidence {item.evidence_id} has no source."
+                    )
+                if not item.jurisdiction:
+                    warnings.append(
+                        f"background_jurisdiction_missing: Background evidence {item.evidence_id} has no jurisdiction."
+                    )
+                if item.effective_date is None:
+                    warnings.append(
+                        "background_effective_date_missing: Background evidence "
+                        f"{item.evidence_id} has no effective date."
+                    )
 
         for gap in plan.data_gaps:
             unresolved.append(f"{gap.field}: {gap.reason}")

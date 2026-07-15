@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+from app.background.contracts import BackgroundResult
 from app.schemas.analysis import OperationPlan, ProductMarketAnalysis, UserInsight
 from app.schemas.evidence import EvidenceReference
 from app.schemas.product import ProductProfile
@@ -15,6 +16,7 @@ class ProductMarketAgentInput(BaseModel):
     selected_peer_products: list[dict[str, object]] = Field(default_factory=list)
     user_constraints: dict[str, object] = Field(default_factory=dict)
     original_user_input: dict[str, object] = Field(default_factory=dict)
+    background_context: BackgroundResult | None = None
 
 
 class UserInsightAgentInput(BaseModel):
@@ -37,6 +39,7 @@ class OperationsDecisionAgentInput(BaseModel):
     peer_group_id: str | None = None
     selected_parent_asins: list[str] = Field(default_factory=list)
     user_constraints: dict[str, object] = Field(default_factory=dict)
+    background_context: BackgroundResult | None = None
 
 
 class EvidenceAuditAgentInput(BaseModel):
@@ -45,3 +48,4 @@ class EvidenceAuditAgentInput(BaseModel):
     evidence: list[EvidenceReference] = Field(default_factory=list)
     statistics: StatisticsResult | None = None
     peer_group_id: str | None = None
+    background_context: BackgroundResult | None = None

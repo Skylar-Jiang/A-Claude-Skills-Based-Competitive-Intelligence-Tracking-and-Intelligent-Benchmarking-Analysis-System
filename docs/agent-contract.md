@@ -5,7 +5,7 @@ path, and LangGraph node.
 
 | Agent | Real provider | Evidence scope | Output responsibility |
 | --- | --- | --- | --- |
-| ProductMarketAgent | DeepSeek | candidate profile, peer products, SQL statistics | price plus features, structure, positioning, ratings, homogenization, differentiation, missing parameters, validations |
+| ProductMarketAgent | DeepSeek | candidate profile, peer products, SQL statistics, optional sourced background | price plus features, structure, positioning, ratings, homogenization, differentiation, missing parameters, validations |
 | UserInsightAgent | DeepSeek | peer reviews and sample boundary | needs, positives, pains, purchase factors, use/maintenance concerns, validations, opportunities, limitations |
 | OperationsDecisionAgent | Qwen | validated parallel outputs and existing evidence IDs | positioning, evidence-bound conclusions, launch actions |
 | EvidenceAuditAgent | Qwen plus deterministic guards | plan, all carried evidence, SQL statistics, expected peer group | attribution, scope, accessory, numeric, hypothesis, ID, conflict, and risk checks |
@@ -17,3 +17,7 @@ deterministic checks alone decide blocking rejection and manual review.
 
 ProductMarketAgent and UserInsightAgent receive the same `peer_group_id` and selected ASIN set and run in parallel.
 No Agent may call the database or claim peer reviews belong to the candidate product.
+
+Optional background context is admitted only through `BackgroundProviderRegistry` and carries provider, source URI,
+jurisdiction and effective/query dates. Empty context remains a data gap. It does not authorize any Agent to generate
+policy, tax, platform or trend facts from model memory.

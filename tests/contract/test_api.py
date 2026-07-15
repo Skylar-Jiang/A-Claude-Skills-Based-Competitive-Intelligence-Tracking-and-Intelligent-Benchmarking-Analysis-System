@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -39,8 +40,13 @@ def test_demo_api_flow_uses_unified_envelopes(tmp_path: Path) -> None:
             "/api/v1/analysis-runs",
             json={"product_id": product_id, "data_mode": "demo"},
         )
-        assert started.status_code == 201
-        run = started.json()["data"]
+        assert started.status_code == 202
+        run_id = started.json()["data"]["run_id"]
+        for _ in range(200):
+            run = client.get(f"/api/v1/analysis-runs/{run_id}").json()["data"]
+            if run["report_id"]:
+                break
+            time.sleep(0.01)
         assert run["status"] == "succeeded"
         assert run["report_id"]
 
@@ -118,11 +124,13 @@ def test_workflow_failure_is_persisted_and_returned_without_fallback(
             json={"product_id": product["product_id"], "data_mode": "demo"},
         )
 
-        assert response.status_code == 500
-        assert response.json()["error"]["code"] == "workflow_failed"
-        assert "fallback" in response.json()["error"]["message"]
-        run_id = response.json()["error"]["details"][0]["run_id"]
-        persisted = client.get(f"/api/v1/analysis-runs/{run_id}").json()["data"]
+        assert response.status_code == 202
+        run_id = response.json()["data"]["run_id"]
+        for _ in range(200):
+            persisted = client.get(f"/api/v1/analysis-runs/{run_id}").json()["data"]
+            if persisted["status"] == "failed":
+                break
+            time.sleep(0.01)
 
     assert persisted["status"] == "failed"
     assert persisted["current_node"] == "workflow_failed"
@@ -132,17 +140,27 @@ def test_workflow_failure_is_persisted_and_returned_without_fallback(
 def test_openapi_contains_formal_v1_routes(tmp_path: Path) -> None:
     expected = {
         "/api/v1/health",
+        "/api/v1/workflow/metadata",
         "/api/v1/products",
         "/api/v1/products/{product_id}",
         "/api/v1/products/{product_id}/files",
         "/api/v1/analysis-runs",
         "/api/v1/analysis-runs/{run_id}",
         "/api/v1/analysis-runs/{run_id}/metadata",
+        "/api/v1/analysis-runs/{run_id}/status",
+        "/api/v1/analysis-runs/{run_id}/timeline",
+        "/api/v1/analysis-runs/{run_id}/agents",
+        "/api/v1/analysis-runs/{run_id}/peers",
+        "/api/v1/analysis-runs/{run_id}/evidence",
+        "/api/v1/analysis-runs/{run_id}/audit",
         "/api/v1/analysis-runs/{run_id}/events",
         "/api/v1/analysis-runs/{run_id}/feedback",
         "/api/v1/reports/{report_id}",
         "/api/v1/reports/{report_id}/markdown",
         "/api/v1/reports/{report_id}/json",
+        "/api/v1/reports/{report_id}/support",
+        "/api/v1/reports/{report_id}/versions",
+        "/api/v1/reports/{report_id}/rollback",
         "/api/v1/knowledge/rebuild",
         "/api/v1/conversations/{session_id}",
     }
@@ -165,10 +183,12 @@ def test_every_v1_operation_declares_typed_success_and_unified_error_models(tmp_
         for method, operation in path.items()
         if method in {"get", "post"}
     ]
-    assert len(operations) == 14
+    assert len(operations) == 24
     enveloped = []
     for operation in operations:
-        success_status = "201" if "201" in operation["responses"] else "200"
+        success_status = next(
+            status for status in ("200", "201", "202") if status in operation["responses"]
+        )
         success_content = operation["responses"][success_status].get("content", {})
         success_schema = success_content.get("application/json", {}).get("schema", {})
         if "ApiResponse" not in success_schema.get("$ref", ""):
@@ -177,4 +197,4 @@ def test_every_v1_operation_declares_typed_success_and_unified_error_models(tmp_
         error_schema = operation["responses"]["422"]["content"]["application/json"]["schema"]
         assert "ApiResponse" in success_schema["$ref"]
         assert "ApiResponse" in error_schema["$ref"]
-    assert len(enveloped) == 11
+    assert len(enveloped) == 21

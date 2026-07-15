@@ -52,6 +52,14 @@ class RunStatus(StrEnum):
     MANUAL_REVIEW = "manual_review"
 
 
+class RunStageStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
 class FileType(StrEnum):
     IMAGE = "image"
     MANUAL = "manual"

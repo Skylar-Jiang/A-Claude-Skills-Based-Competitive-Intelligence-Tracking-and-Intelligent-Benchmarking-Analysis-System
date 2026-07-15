@@ -26,7 +26,9 @@ def test_base_defines_only_the_minimum_scaffold_tables() -> None:
 
     assert table_names == {
         "agent_outputs",
+        "analysis_events",
         "analysis_runs",
+        "analysis_run_stages",
         "competitor_offers",
         "conversations",
         "evidence_references",

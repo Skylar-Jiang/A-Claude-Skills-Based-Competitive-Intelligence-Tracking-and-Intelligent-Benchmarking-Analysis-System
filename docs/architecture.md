@@ -6,7 +6,7 @@ database session.
 
 ```mermaid
 flowchart LR
-    U["Unlisted product + optional image"] --> API["FastAPI /api/v1"]
+    U["Unlisted product + optional image"] --> API["FastAPI /api/v1: 202 async run"]
     API --> V["Conditional Qwen vision"]
     API --> P["Prepared catalog + FTS candidate filter"]
     P --> E["Embedding rerank of 40 candidates"]
@@ -26,11 +26,22 @@ flowchart LR
     OD --> EA["EvidenceAuditAgent / Qwen LCEL"]
     EA -->|"deterministic reject: at most one retry"| OD
     EA --> R["Persist state, evidence, timings, Markdown + JSON"]
+    R --> SSE["Persisted timeline + replayable SSE"]
+    R --> RS["Immutable report versions + guarded support"]
 ```
 
 ProductMarketAgent and UserInsightAgent are separate LangGraph fan-out nodes and execute concurrently. Fan-in occurs
 only before OperationsDecisionAgent. Node timestamps are persisted and `parallel_agent_overlap` is computed from their
 actual intervals.
+
+The dispatcher runs analysis outside the request thread. SQLite uses WAL and a bounded busy timeout so frontend status
+reads can coexist with peer/evidence writes. Each real background run initializes its Chroma client in the worker
+thread; duplicate source reviews are removed after offset lookup and duplicate document IDs are collapsed before a
+Chroma upsert. Stage and event rows are committed before SSE delivery, so reconnecting clients replay durable state.
+
+Optional product-background context is behind `BackgroundProviderRegistry`. The default registry returns no external
+facts. A configured provider must return dated, jurisdiction-scoped evidence; Agents and audit receive only those
+traceable records, never model-invented policy, tax, or platform facts.
 
 ## Offline and online boundary
 
