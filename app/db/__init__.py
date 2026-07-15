@@ -1,1 +1,1 @@
-"""Database primitives for the TradePilot scaffold."""
+"""Database primitives for TradePilot."""

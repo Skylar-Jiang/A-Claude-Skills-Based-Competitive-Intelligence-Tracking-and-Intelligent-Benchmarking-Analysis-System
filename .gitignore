@@ -23,6 +23,7 @@ env/
 *.sqlite-shm
 *.sqlite-wal
 data/chroma/
+data/demo/
 data/uploads/*
 data/reports/*
 !data/uploads/.gitkeep

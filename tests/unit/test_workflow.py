@@ -1,12 +1,15 @@
 from threading import Barrier
+from time import sleep
 
 from app.agents.evidence_audit import EvidenceAuditAgent
 from app.agents.operations_decision import OperationsDecisionAgent
 from app.agents.product_market import ProductMarketAgent
 from app.agents.user_insight import UserInsightAgent
-from app.core.enums import AgentStatus, AuditStatus, DataMode, DataOrigin
+from app.core.enums import AgentStatus, AuditStatus, DataMode, DataOrigin, KnowledgeType, RetrievalScope
+from app.rag.contracts import KnowledgeDocument
 from app.rag.in_memory import InMemoryKnowledgeStore
 from app.schemas.analysis import AuditResult, OperationPlan, ProductMarketAnalysis, UserInsight
+from app.schemas.common import DataGap
 from app.schemas.product import ProductCreate, ProductProfile
 from app.statistics.contracts import StatisticsResult
 from app.workflows.graph import TradePilotWorkflow
@@ -40,6 +43,7 @@ class ParallelProductAgent(ProductMarketAgent):
 
     def run(self, context):  # type: ignore[no-untyped-def]
         self.barrier.wait(timeout=2)
+        sleep(0.02)
         return ProductMarketAnalysis(status=AgentStatus.SUCCEEDED, data_origin=DataOrigin.DEMO)
 
 
@@ -50,6 +54,7 @@ class ParallelInsightAgent(UserInsightAgent):
 
     def run(self, context):  # type: ignore[no-untyped-def]
         self.barrier.wait(timeout=2)
+        sleep(0.02)
         return UserInsight(status=AgentStatus.SUCCEEDED, data_origin=DataOrigin.DEMO)
 
 
@@ -109,6 +114,18 @@ def test_state_graph_runs_first_two_agents_in_parallel() -> None:
     assert any(edge.source == "product_normalizer" and edge.target == "statistics_provider" for edge in graph.edges)
     assert any(edge.source == "statistics_provider" and edge.target == "product_market_agent" for edge in graph.edges)
     assert any(edge.source == "statistics_provider" and edge.target == "user_insight_agent" for edge in graph.edges)
+    market_execution = result.node_status["product_market_agent"]
+    insight_execution = result.node_status["user_insight_agent"]
+    assert market_execution.started_at is not None and market_execution.completed_at is not None
+    assert insight_execution.started_at is not None and insight_execution.completed_at is not None
+    assert max(market_execution.started_at, insight_execution.started_at) < min(
+        market_execution.completed_at,
+        insight_execution.completed_at,
+    )
+    assert result.workflow_metadata["parallel_agent_overlap"] is True
+    assert result.workflow_metadata["rag_retrieval_duration_ms"] >= 0
+    assert result.workflow_metadata["statistics_query_duration_ms"] >= 0
+
 
 
 def test_rejected_audit_retries_operations_once_then_stops() -> None:
@@ -128,3 +145,55 @@ def test_rejected_audit_retries_operations_once_then_stops() -> None:
     assert result.audit_result is not None
     assert result.audit_result.manual_review_required is True
     assert result.current_node == "persist_and_export"
+
+
+def test_real_new_product_workflow_retrieves_peer_group_evidence() -> None:
+    store = InMemoryKnowledgeStore()
+    store.ingest(
+        [
+            KnowledgeDocument(
+                document_id="peer-review-evidence",
+                product_id="listed-peer-1",
+                knowledge_type=KnowledgeType.REVIEW_INSIGHT,
+                content="A real review belonging to a listed peer product.",
+                source_name="real peer review",
+                data_origin=DataOrigin.REAL,
+                metadata={"peer_group_id": "fountain-group", "evidence_scope": "peer_product"},
+            )
+        ]
+    )
+    state = initial_state().model_copy(
+        update={
+            "data_mode": DataMode.REAL,
+            "peer_group_id": "fountain-group",
+            "retrieval_scope": RetrievalScope.PEER_GROUP,
+        }
+    )
+    workflow = TradePilotWorkflow(knowledge_store=store)
+
+    result = TradePilotState.model_validate(workflow.invoke(state))
+
+    assert "peer-review-evidence" in {item.evidence_id for item in result.rag_evidence}
+    peer_review = next(item for item in result.rag_evidence if item.evidence_id == "peer-review-evidence")
+    assert peer_review.metadata["candidate_product_id"] == "product-1"
+    assert any(item.evidence_type == "sql_statistics" for item in result.rag_evidence)
+
+
+def test_peer_matching_data_gap_reaches_statistics_and_analysis_agents() -> None:
+    gap = DataGap(
+        code="insufficient_peer_products",
+        field="peer_group",
+        reason="Only 6 peer products passed the configured semantic threshold.",
+        required_for="broader peer-market coverage",
+    )
+    state = initial_state().model_copy(update={"data_gaps": [gap]})
+    workflow = TradePilotWorkflow(knowledge_store=InMemoryKnowledgeStore())
+
+    result = TradePilotState.model_validate(workflow.invoke(state))
+
+    assert result.statistics_result is not None
+    assert gap in result.statistics_result.data_gaps
+    assert result.product_market_analysis is not None
+    assert gap in result.product_market_analysis.data_gaps
+    assert result.user_insight is not None
+    assert gap in result.user_insight.data_gaps

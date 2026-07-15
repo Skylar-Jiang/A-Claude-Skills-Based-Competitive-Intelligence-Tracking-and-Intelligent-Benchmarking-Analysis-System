@@ -22,4 +22,9 @@ class StatisticsResult(BaseModel):
 
 
 class StatisticsProvider(Protocol):
-    def get_statistics(self, *, product: ProductProfile) -> StatisticsResult: ...
+    def get_statistics(
+        self,
+        *,
+        product: ProductProfile,
+        peer_group_id: str | None = None,
+    ) -> StatisticsResult: ...

@@ -28,3 +28,13 @@ class ScaffoldOnlyError(TradePilotError):
             f"{mode.capitalize()} analysis is not implemented in this scaffold; no mode fallback was used",
             503,
         )
+
+
+class DataPreparationRequiredError(TradePilotError):
+    def __init__(self, component: str, *, stale: bool = False):
+        state = "stale" if stale else "missing"
+        super().__init__(
+            ErrorCode.DATA_PREPARATION_REQUIRED,
+            f"Prepared {component} cache is {state}; run the explicit prepare_peer_data command first",
+            503,
+        )

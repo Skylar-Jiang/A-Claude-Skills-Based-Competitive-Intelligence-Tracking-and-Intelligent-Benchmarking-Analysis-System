@@ -90,7 +90,7 @@ class OperationContent:
 
 
 class OperationContentSkill:
-    """Versioned, deterministic copy rules for the Demo operations workflow."""
+    """Versioned deterministic copy rules for the operations workflow."""
 
     def __init__(self, config: SkillConfig) -> None:
         if not config.enabled:

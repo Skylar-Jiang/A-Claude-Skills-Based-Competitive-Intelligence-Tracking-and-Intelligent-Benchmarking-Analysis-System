@@ -10,6 +10,9 @@ class ProductMarketAgentInput(BaseModel):
     product: ProductProfile
     evidence: list[EvidenceReference] = Field(default_factory=list)
     statistics: StatisticsResult
+    peer_group_id: str | None = None
+    selected_parent_asins: list[str] = Field(default_factory=list)
+    selected_peer_products: list[dict[str, object]] = Field(default_factory=list)
     user_constraints: dict[str, object] = Field(default_factory=dict)
     original_user_input: dict[str, object] = Field(default_factory=dict)
 
@@ -18,6 +21,9 @@ class UserInsightAgentInput(BaseModel):
     product: ProductProfile
     evidence: list[EvidenceReference] = Field(default_factory=list)
     statistics: StatisticsResult
+    peer_group_id: str | None = None
+    selected_parent_asins: list[str] = Field(default_factory=list)
+    selected_peer_products: list[dict[str, object]] = Field(default_factory=list)
     user_constraints: dict[str, object] = Field(default_factory=dict)
     original_user_input: dict[str, object] = Field(default_factory=dict)
 
@@ -26,8 +32,16 @@ class OperationsDecisionAgentInput(BaseModel):
     product: ProductProfile
     product_market_analysis: ProductMarketAnalysis
     user_insight: UserInsight
+    statistics: StatisticsResult | None = None
+    evidence: list[EvidenceReference] = Field(default_factory=list)
+    peer_group_id: str | None = None
+    selected_parent_asins: list[str] = Field(default_factory=list)
+    user_constraints: dict[str, object] = Field(default_factory=dict)
 
 
 class EvidenceAuditAgentInput(BaseModel):
     product: ProductProfile
     operation_plan: OperationPlan
+    evidence: list[EvidenceReference] = Field(default_factory=list)
+    statistics: StatisticsResult | None = None
+    peer_group_id: str | None = None

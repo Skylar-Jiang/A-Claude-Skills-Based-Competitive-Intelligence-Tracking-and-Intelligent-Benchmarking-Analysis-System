@@ -1,6 +1,10 @@
+import json
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -34,14 +38,14 @@ def analysis_service(request: Request, session: Session) -> AnalysisService:
 
 @router.get(
     "/health",
-    summary="TradePilot scaffold health",
+    summary="TradePilot health and implementation status",
     response_model=ApiResponse[HealthRead],
     responses=API_ERROR_RESPONSES,
 )
 def health(request: Request):  # type: ignore[no-untyped-def]
     return success(
         request,
-        {"service": "TradePilot", "status": "ok", "implementation_status": "scaffold"},
+        {"service": "TradePilot", "status": "ok", "implementation_status": "production"},
     )
 
 
@@ -95,7 +99,7 @@ def add_product_file(
 @router.post(
     "/analysis-runs",
     status_code=201,
-    summary="Run Demo scaffold analysis",
+    summary="Run a TradePilot analysis workflow",
     response_model=ApiResponse[AnalysisRunRead],
     responses=API_ERROR_RESPONSES,
 )
@@ -117,10 +121,62 @@ def get_analysis_run(request: Request, run_id: str, session: DbSession):  # type
     return success(request, run, data_mode=run.data_mode.value)
 
 
+@router.get(
+    "/analysis-runs/{run_id}/metadata",
+    summary="Get workflow, peer-scope, and timing metadata",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def get_analysis_metadata(request: Request, run_id: str, session: DbSession):  # type: ignore[no-untyped-def]
+    run = analysis_service(request, session).get_run(run_id)
+    keys = (
+        "peer_group_id",
+        "selected_parent_asins",
+        "review_sample_scope",
+        "match_method",
+        "match_limitations",
+        "peer_selection_metadata",
+        "workflow_metadata",
+        "node_status",
+    )
+    return success(request, {key: run.state.get(key) for key in keys}, data_mode=run.data_mode.value)
+
+
+@router.get(
+    "/analysis-runs/{run_id}/events",
+    summary="Stream persisted Agent and workflow events as SSE",
+    responses=API_ERROR_RESPONSES,
+)
+def stream_analysis_events(request: Request, run_id: str, session: DbSession) -> StreamingResponse:
+    service = analysis_service(request, session)
+    run = service.get_run(run_id)
+    outputs = service.list_agent_outputs(run_id)
+
+    def events() -> Iterator[str]:
+        for output in outputs:
+            payload = {
+                "run_id": run_id,
+                "agent_name": output.agent_name,
+                "status": output.status.value,
+                "started_at": output.started_at.isoformat() if output.started_at else None,
+                "completed_at": output.completed_at.isoformat() if output.completed_at else None,
+                "duration_ms": output.duration_ms,
+            }
+            yield f"event: agent_completed\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        completed = {
+            "run_id": run_id,
+            "status": run.status.value,
+            "workflow_metadata": run.state.get("workflow_metadata", {}),
+        }
+        yield f"event: workflow_completed\ndata: {json.dumps(completed, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream")
+
+
 @router.post(
     "/analysis-runs/{run_id}/feedback",
     status_code=201,
-    summary="Store scaffold feedback",
+    summary="Store analysis feedback",
     response_model=ApiResponse[FeedbackAccepted],
     responses=API_ERROR_RESPONSES,
 )
@@ -138,13 +194,34 @@ def add_feedback(
 
 @router.get(
     "/reports/{report_id}",
-    summary="Get Demo scaffold report",
+    summary="Get a structured TradePilot report",
     response_model=ApiResponse[FinalReport],
     responses=API_ERROR_RESPONSES,
 )
 def get_report(request: Request, report_id: str, session: DbSession):  # type: ignore[no-untyped-def]
     report = analysis_service(request, session).get_report(report_id)
-    return success(request, report, data_mode="demo")
+    return success(request, report, data_mode="demo" if report.is_demo else "real")
+
+
+@router.get(
+    "/reports/{report_id}/markdown",
+    summary="Get final report Markdown content",
+    responses=API_ERROR_RESPONSES,
+)
+def get_report_markdown(request: Request, report_id: str, session: DbSession) -> PlainTextResponse:
+    report = analysis_service(request, session).get_report(report_id)
+    return PlainTextResponse(Path(report.markdown_path).read_text(encoding="utf-8"), media_type="text/markdown")
+
+
+@router.get(
+    "/reports/{report_id}/json",
+    summary="Get final report JSON content",
+    responses=API_ERROR_RESPONSES,
+)
+def get_report_json(request: Request, report_id: str, session: DbSession) -> JSONResponse:
+    report = analysis_service(request, session).get_report(report_id)
+    payload = json.loads(Path(report.json_path).read_text(encoding="utf-8"))
+    return JSONResponse(content=payload)
 
 
 @router.post(
@@ -155,7 +232,7 @@ def get_report(request: Request, report_id: str, session: DbSession):  # type: i
 )
 def rebuild_knowledge(request: Request, session: DbSession):  # type: ignore[no-untyped-def]
     count = KnowledgeService(session, request.app.state.knowledge_store).rebuild()
-    return success(request, {"documents_ingested": count, "implementation_status": "scaffold"})
+    return success(request, {"documents_ingested": count, "implementation_status": "production"})
 
 
 @router.get(

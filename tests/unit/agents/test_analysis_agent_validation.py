@@ -94,3 +94,27 @@ def test_product_agent_real_mode_uses_retrieval_pipeline(demo_product: ProductPr
     )
     assert output.evidence_ids == ["RAG-PRODUCT-1"]
     assert output.evidence_references[1]["evidence_id"] == "RAG-PRODUCT-1"
+
+
+def test_user_agent_normalizes_model_string_data_gaps(demo_product: ProductProfile) -> None:
+    product = demo_product.model_copy(update={"data_origin": DataOrigin.REAL})
+    model = RunnableLambda(
+        lambda _: AIMessage(
+            content='{"status":"succeeded","insight_summary":"同类商品评论样本有限。",'
+            '"evidence_ids":["ev-1"],"conclusions":[{"conclusion":"样本中出现维护关注。",'
+            '"conclusion_type":"user_insight","confidence":0.7,"evidence_ids":["ev-1"],'
+            '"data_gaps":["样本量有限"]}],"data_gaps":["缺少更广泛评论"]}'
+        )
+    )
+    evidence = _evidence(product).model_copy(update={"knowledge_type": KnowledgeType.REVIEW_INSIGHT})
+
+    output = UserInsightAgent(model=model).run(
+        UserInsightAgentInput(
+            product=product,
+            evidence=[evidence],
+            statistics=build_scaffold_statistics(product),
+        )
+    )
+
+    assert output.data_gaps[0].reason == "缺少更广泛评论"
+    assert output.conclusions[0].data_gaps[0].reason == "样本量有限"

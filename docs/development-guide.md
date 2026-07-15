@@ -1,30 +1,32 @@
 # Development guide
 
-Use Python 3.12 only. Install `requirements.txt` with `python -m pip install -r requirements.txt`, copy
-`.env.example` to `.env`, and run the verification commands in the README before handing off changes.
-Never commit `.env`, keys, SQLite, Chroma state, generated reports, caches, or virtual environments.
+Use Python 3.12 and install the locked requirement ranges. Copy `.env.example` to ignored `.env`; never commit keys,
+SQLite, Chroma state, prepared caches, uploaded images, reports, logs, or virtual environments.
 
-To add a domain, add exactly:
+## Real configuration
 
-1. a profile under `config/domain_profiles/`;
-2. a `DomainAdapter` under `app/adapters/domains/`;
-3. a data import/cleaning script under `scripts/`.
+Use the official provider bases already shown in `.env.example`. Recommended validated model IDs are
+`deepseek-v4-flash`, `qwen3.6-flash`, `qwen3.7-plus`, `qwen3-vl-plus`, and `text-embedding-v4`. Structured Agents
+explicitly disable provider thinking mode so hidden reasoning cannot exhaust the bounded JSON output budget.
 
-Do not change `/api/v1`, `TradePilotState`, repository protocols, or the main graph merely to add a
-domain. If a contract must change, document the compatibility impact first and add a failing test.
+Prepare caches separately before starting the API:
 
-Domain profiles are loaded with `load_domain_profile` and select their adapter with
-`load_domain_adapter`; scripts must not import one concrete adapter as the runtime selection rule.
-RAG consumers receive `KnowledgeStore` through `app.rag.factory`, and analysis Agents receive a
-validated `StatisticsResult` written by the `statistics_provider` graph node.
+```powershell
+python scripts\prepare_peer_data.py
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-## Migrations and shared contracts
+Do not add raw JSONL scans or cache builds to request handlers. Do not replace candidate-only embedding with full
+dataset embedding, and do not call the full-index rebuild path from peer-group analysis.
 
-Initialize or upgrade with `python -m alembic upgrade head` (or `python scripts/init_db.py`). Create
-schema changes with `python -m alembic revision --autogenerate -m "message"`, inspect the revision,
-and test downgrade/upgrade. Never edit the initial migration after teammates have branched.
+## Change rules
 
-Shared schemas, state, graph, router, models/migrations, enums, and cross-team ports belong to the
-Contract Maintainer. Follow `docs/contract-governance.md`: public changes use a standalone Contract
-PR with compatibility, migration, tests, and merge/rebase order. Business PRs stay inside the owner
-paths in `docs/team-work-split.md`.
+- Preserve both retrieval scopes; new Real candidate work uses `peer_group`, existing tests may use `exact_product`.
+- Keep exact numeric facts in `StatisticsResult` or user input, not review text or model memory.
+- Preserve `peer_group_id`, selected peer IDs/ASINs, statistics, product/review evidence, sample scope, match metadata,
+  vision output, node timings, and workflow timing in `TradePilotState`.
+- Add a failing test before changing matching, retrieval, Agent semantics, audit, or error behavior.
+- Apply Alembic migrations with `python -m alembic upgrade head`; never rewrite an applied migration.
+
+Use `config/peer_matching.yaml` for accessory/exclusion terms and selection limits instead of scattering business terms
+through Python modules.

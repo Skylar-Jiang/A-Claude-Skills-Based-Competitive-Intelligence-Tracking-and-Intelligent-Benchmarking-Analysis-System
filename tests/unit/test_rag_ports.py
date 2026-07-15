@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.core.enums import AgentStatus, DataOrigin, KnowledgeType
+from app.core.enums import AgentStatus, DataOrigin, KnowledgeType, RetrievalScope
 from app.rag.chroma import ChromaKnowledgeStore
 from app.rag.collections import COLLECTION_NAMES
 from app.rag.contracts import KnowledgeDocument
@@ -47,6 +47,39 @@ def test_in_memory_store_returns_insufficient_evidence_without_fabrication() -> 
     assert result.status is AgentStatus.INSUFFICIENT_EVIDENCE
     assert result.evidence == []
     assert result.data_gaps[0].code == "no_rag_evidence"
+
+
+def test_in_memory_store_can_retrieve_all_peer_products_in_one_group() -> None:
+    store = InMemoryKnowledgeStore()
+    store.ingest(
+        [
+            KnowledgeDocument(
+                document_id=f"peer-review-{index}",
+                product_id=f"peer-{index}",
+                knowledge_type=KnowledgeType.REVIEW_INSIGHT,
+                content=f"Traceable peer review {index}",
+                source_name="peer review fixture",
+                data_origin=DataOrigin.REAL,
+                metadata={"peer_group_id": "peer-group-1", "evidence_scope": "peer_product"},
+            )
+            for index in range(3)
+        ]
+    )
+
+    result = store.retrieve(
+        query="peer concerns",
+        product_id="new-product-with-no-reviews",
+        knowledge_type=KnowledgeType.REVIEW_INSIGHT,
+        scope=RetrievalScope.PEER_GROUP,
+        peer_group_id="peer-group-1",
+    )
+
+    assert result.status is AgentStatus.SUCCEEDED
+    assert {item.evidence_id for item in result.evidence} == {
+        "peer-review-0",
+        "peer-review-1",
+        "peer-review-2",
+    }
 
 
 class TinyEmbedding:
@@ -112,3 +145,34 @@ def test_minimal_chroma_adapter_uses_injected_embedding_without_download(tmp_pat
 
     store.clear()
     assert store.client.list_collections() == []
+
+
+def test_chroma_adapter_filters_peer_group_without_requiring_new_product_id(tmp_path: Path) -> None:
+    store = ChromaKnowledgeStore(tmp_path, TinyEmbedding())
+    store.ingest(
+        [
+            KnowledgeDocument(
+                document_id=f"peer-doc-{group}-{index}",
+                product_id=f"peer-{group}-{index}",
+                knowledge_type=KnowledgeType.REVIEW_INSIGHT,
+                content=f"Peer group {group} review {index}",
+                source_name="peer review fixture",
+                data_origin=DataOrigin.REAL,
+                metadata={"peer_group_id": group, "evidence_scope": "peer_product"},
+            )
+            for group in ("wanted", "other")
+            for index in range(2)
+        ]
+    )
+
+    result = store.retrieve(
+        query="review",
+        product_id="new-product-with-no-reviews",
+        knowledge_type=KnowledgeType.REVIEW_INSIGHT,
+        scope=RetrievalScope.PEER_GROUP,
+        peer_group_id="wanted",
+    )
+
+    assert result.status is AgentStatus.SUCCEEDED
+    assert {item.metadata["peer_group_id"] for item in result.evidence} == {"wanted"}
+    assert {item.metadata["evidence_scope"] for item in result.evidence} == {"peer_product"}

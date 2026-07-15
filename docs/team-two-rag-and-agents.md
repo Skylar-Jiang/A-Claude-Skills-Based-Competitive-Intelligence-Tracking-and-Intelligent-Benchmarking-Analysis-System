@@ -137,3 +137,23 @@ py -3.12 -m compileall -q app tests scripts
 The current local Chroma state is partial. Full-index evaluation must be rerun after indexing all filtered records.
 Gold query quality still benefits from human spot checks. Reranker latency is high and should stay conditional by
 default.
+
+## Unlisted-product peer-group path
+
+The production unlisted-product analysis path is intentionally separate from the full-index workflow above:
+
+1. Build `CandidateProductSignature` from candidate text, parameters, scenarios, target species/users, target price,
+   and a verified vision summary when available.
+2. Query the prepared catalog FTS using title/description/features/details and candidate hints. Category and price are
+   auxiliary signals; no mandatory global category label is predicted or queried.
+3. Rule-filter at most 300 candidates, embed only that bounded set, rerank at most 40, and accept only complete products
+   meeting `config/peer_matching.yaml`. Never fill from below threshold; fewer than 10 yields
+   `insufficient_peer_products`.
+4. Seek selected reviews through the offset-only lookup, persist the small candidate/peer subset, and upsert the two
+   small runtime Chroma collections.
+5. Retrieve with `scope=peer_group`, then pass product evidence and review evidence separately to the two parallel
+   analysis Agents.
+
+The stable `peer_group_id` binds normalized candidate content (excluding temporary `product_id`), catalog source
+signature, full matcher config/version, embedding model, and sorted accepted ASINs. It is an analysis-group identifier,
+not a category label. This path must not invoke full-index CLI builds or modify an index being built elsewhere.

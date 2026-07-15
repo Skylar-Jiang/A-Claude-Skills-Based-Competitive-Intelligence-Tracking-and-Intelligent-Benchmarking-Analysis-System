@@ -75,3 +75,81 @@ def test_pet_supplies_provider_returns_sql_backed_metrics() -> None:
         assert result.metrics["avg_rating"] == Decimal("4.4")
         assert result.metrics["total_rating_count"] == Decimal("166")
         assert result.evidence_ids == ["knowledge-1"]
+
+
+def test_pet_supplies_provider_returns_peer_group_statistics_for_unlisted_product() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        for index, (price, rating, rating_number) in enumerate(
+            [("20", "4.0", 100), ("30", "4.5", 200), (None, "5.0", 300)]
+        ):
+            product_id = f"peer-{index}"
+            session.add(
+                Product(
+                    product_id=product_id,
+                    name=f"Listed peer {index}",
+                    category="Fountains",
+                    data_mode="real",
+                    data_origin="real",
+                    attributes_json={"peer_group_id": "peer-group-1"},
+                    metadata_json={"peer_group_id": "peer-group-1"},
+                    payload_json={},
+                )
+            )
+            session.add(
+                CompetitorOffer(
+                    offer_id=f"offer-{index}",
+                    product_id=product_id,
+                    data_origin="real",
+                    attributes_json={
+                        "peer_group_id": "peer-group-1",
+                        "price": price,
+                        "average_rating": rating,
+                        "rating_number": rating_number,
+                    },
+                )
+            )
+            session.add(
+                KnowledgeSource(
+                    source_id=f"knowledge-{index}",
+                    product_id=product_id,
+                    knowledge_type="product_knowledge",
+                    content=f"Listed peer {index}",
+                    data_origin="real",
+                    metadata_json={"peer_group_id": "peer-group-1"},
+                )
+            )
+        session.commit()
+        new_product = ProductProfile(
+            product_id="unlisted-product",
+            data_origin=DataOrigin.USER,
+            **ProductCreate(
+                name="New Cat Fountain",
+                category="Fountains",
+                data_mode=DataMode.REAL,
+            ).model_dump(),
+        )
+
+        result = PetSuppliesStatisticsProvider(session).get_statistics(
+            product=new_product,
+            peer_group_id="peer-group-1",
+        )
+
+        assert result.status is AgentStatus.SUCCEEDED
+        assert result.data_origin is DataOrigin.REAL
+        assert result.metrics == {
+            "peer_product_count": Decimal("3"),
+            "priced_product_count": Decimal("2"),
+            "min_price": Decimal("20"),
+            "max_price": Decimal("30"),
+            "avg_price": Decimal("25"),
+            "median_price": Decimal("25"),
+            "avg_rating": Decimal("4.5"),
+            "total_rating_number": Decimal("600"),
+        }
+        assert set(result.evidence_ids) == {"knowledge-0", "knowledge-1", "knowledge-2"}

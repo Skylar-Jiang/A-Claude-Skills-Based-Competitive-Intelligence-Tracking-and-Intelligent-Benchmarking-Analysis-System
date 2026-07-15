@@ -46,8 +46,18 @@ def test_demo_api_flow_uses_unified_envelopes(tmp_path: Path) -> None:
 
         fetched = client.get(f"/api/v1/analysis-runs/{run['run_id']}")
         report = client.get(f"/api/v1/reports/{run['report_id']}")
+        metadata = client.get(f"/api/v1/analysis-runs/{run['run_id']}/metadata")
+        events = client.get(f"/api/v1/analysis-runs/{run['run_id']}/events")
+        markdown = client.get(f"/api/v1/reports/{run['report_id']}/markdown")
+        report_json = client.get(f"/api/v1/reports/{run['report_id']}/json")
         assert fetched.json()["data"]["state"]["product_market_analysis"]["implementation_status"] == "scaffold"
         assert report.json()["data"]["is_demo"] is True
+        assert metadata.json()["data"]["workflow_metadata"]["duration_ms"] >= 0
+        assert events.headers["content-type"].startswith("text/event-stream")
+        assert events.text.count("event: agent_completed") == 4
+        assert "event: workflow_completed" in events.text
+        assert markdown.headers["content-type"].startswith("text/markdown")
+        assert report_json.json()["report_id"] == run["report_id"]
 
 
 def test_real_mode_without_model_configuration_is_explicit_503(tmp_path: Path) -> None:
@@ -91,7 +101,35 @@ def test_mock_and_configured_real_never_fall_back_to_demo(tmp_path: Path) -> Non
     assert "fallback" in real.json()["error"]["message"]
 
 
-def test_openapi_contains_only_the_ten_formal_v1_routes(tmp_path: Path) -> None:
+def test_workflow_failure_is_persisted_and_returned_without_fallback(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    def fail_workflow(self, state):  # type: ignore[no-untyped-def]
+        raise RuntimeError("provider timeout")
+
+    monkeypatch.setattr("app.services.analysis_service.TradePilotWorkflow.invoke", fail_workflow)
+    with make_client(tmp_path) as client:
+        product = client.post(
+            "/api/v1/products",
+            json={"name": "Failure fixture", "category": "demo-generic", "data_mode": "demo"},
+        ).json()["data"]
+        response = client.post(
+            "/api/v1/analysis-runs",
+            json={"product_id": product["product_id"], "data_mode": "demo"},
+        )
+
+        assert response.status_code == 500
+        assert response.json()["error"]["code"] == "workflow_failed"
+        assert "fallback" in response.json()["error"]["message"]
+        run_id = response.json()["error"]["details"][0]["run_id"]
+        persisted = client.get(f"/api/v1/analysis-runs/{run_id}").json()["data"]
+
+    assert persisted["status"] == "failed"
+    assert persisted["current_node"] == "workflow_failed"
+    assert persisted["state"]["error"]["type"] == "RuntimeError"
+
+
+def test_openapi_contains_formal_v1_routes(tmp_path: Path) -> None:
     expected = {
         "/api/v1/health",
         "/api/v1/products",
@@ -99,8 +137,12 @@ def test_openapi_contains_only_the_ten_formal_v1_routes(tmp_path: Path) -> None:
         "/api/v1/products/{product_id}/files",
         "/api/v1/analysis-runs",
         "/api/v1/analysis-runs/{run_id}",
+        "/api/v1/analysis-runs/{run_id}/metadata",
+        "/api/v1/analysis-runs/{run_id}/events",
         "/api/v1/analysis-runs/{run_id}/feedback",
         "/api/v1/reports/{report_id}",
+        "/api/v1/reports/{report_id}/markdown",
+        "/api/v1/reports/{report_id}/json",
         "/api/v1/knowledge/rebuild",
         "/api/v1/conversations/{session_id}",
     }
@@ -123,10 +165,16 @@ def test_every_v1_operation_declares_typed_success_and_unified_error_models(tmp_
         for method, operation in path.items()
         if method in {"get", "post"}
     ]
-    assert len(operations) == 10
+    assert len(operations) == 14
+    enveloped = []
     for operation in operations:
         success_status = "201" if "201" in operation["responses"] else "200"
-        success_schema = operation["responses"][success_status]["content"]["application/json"]["schema"]
+        success_content = operation["responses"][success_status].get("content", {})
+        success_schema = success_content.get("application/json", {}).get("schema", {})
+        if "ApiResponse" not in success_schema.get("$ref", ""):
+            continue
+        enveloped.append(operation)
         error_schema = operation["responses"]["422"]["content"]["application/json"]["schema"]
         assert "ApiResponse" in success_schema["$ref"]
         assert "ApiResponse" in error_schema["$ref"]
+    assert len(enveloped) == 11

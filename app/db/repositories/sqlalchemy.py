@@ -146,23 +146,31 @@ class SqlAlchemyAnalysisRepository:
             delete(EvidenceReferenceRecord).where(EvidenceReferenceRecord.run_id == state.run_id)
         )
         outputs = {
-            "ProductMarketAgent": state.product_market_analysis,
-            "UserInsightAgent": state.user_insight,
-            "OperationsDecisionAgent": state.operation_plan,
-            "EvidenceAuditAgent": state.audit_result,
+            "ProductMarketAgent": ("product_market_agent", state.product_market_analysis),
+            "UserInsightAgent": ("user_insight_agent", state.user_insight),
+            "OperationsDecisionAgent": ("operations_decision_agent", state.operation_plan),
+            "EvidenceAuditAgent": ("evidence_audit_agent", state.audit_result),
         }
-        for name, output in outputs.items():
+        for name, (node_name, output) in outputs.items():
             if output is None:
-                raise ValueError(f"missing scaffold output: {name}")
+                raise ValueError(f"missing Agent output: {name}")
             status = getattr(output, "status", AgentStatus.SUCCEEDED)
             agent_status = status if isinstance(status, AgentStatus) else AgentStatus.SUCCEEDED
+            execution = state.node_status.get(node_name)
             self.session.add(
                 AgentOutput(
                     run_id=state.run_id,
                     agent_name=name,
                     status=agent_status.value,
-                    input_json={"product_id": state.product_profile.product_id},
+                    input_json={
+                        "product_id": state.product_profile.product_id,
+                        "peer_group_id": state.peer_group_id,
+                        "selected_parent_asins": state.selected_parent_asins,
+                    },
                     output_json=output.model_dump(mode="json"),
+                    started_at=execution.started_at if execution else None,
+                    completed_at=execution.completed_at if execution else None,
+                    duration_ms=execution.duration_ms if execution else None,
                 )
             )
         for evidence in state.rag_evidence:

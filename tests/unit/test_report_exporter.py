@@ -4,8 +4,9 @@ from pathlib import Path
 from app.agents.contracts import EvidenceAuditAgentInput, OperationsDecisionAgentInput
 from app.agents.evidence_audit import EvidenceAuditAgent
 from app.agents.operations_decision import OperationsDecisionAgent
-from app.core.enums import AgentStatus, DataMode, DataOrigin, KnowledgeType
-from app.schemas.analysis import ProductMarketAnalysis, UserInsight
+from app.core.enums import AgentStatus, AuditStatus, DataMode, DataOrigin, ImplementationStatus, KnowledgeType
+from app.schemas.analysis import AuditResult, OperationPlan, ProductMarketAnalysis, UserInsight
+from app.schemas.common import Conclusion
 from app.schemas.evidence import EvidenceReference
 from app.schemas.product import ProductCreate, ProductProfile
 from app.schemas.report import DEMO_DISCLAIMER
@@ -108,3 +109,83 @@ def test_exporter_writes_versioned_structured_json_and_markdown(tmp_path: Path) 
     assert "Content playbook" in markdown
     assert "market-1" in markdown
     assert DEMO_DISCLAIMER in markdown
+
+
+def test_real_report_uses_unlisted_product_peer_group_sections_without_scaffold_text(tmp_path: Path) -> None:
+    state = completed_state()
+    state = state.model_copy(
+        update={
+            "data_mode": DataMode.REAL,
+            "product_profile": state.product_profile.model_copy(
+                update={"data_origin": DataOrigin.USER, "data_mode": DataMode.REAL, "name": "New Cat Fountain"}
+            ),
+            "peer_group_id": "peer-group-1",
+            "selected_parent_asins": ["PEER-1"],
+            "product_market_analysis": ProductMarketAnalysis(
+                status=AgentStatus.SUCCEEDED,
+                data_origin=DataOrigin.USER,
+                implementation_status=ImplementationStatus.PRODUCTION,
+                product_summary="待上市新商品与同类市场商品比较。",
+                price_analysis="同类市场价格来自 SQL。",
+                feature_baseline=["循环供水"],
+                prelaunch_validations=["验证运行噪音"],
+                reasoned_hypotheses=["待验证假设：水泵结构可能带来噪音。"],
+                evidence_ids=["market-1"],
+            ),
+            "user_insight": UserInsight(
+                status=AgentStatus.SUCCEEDED,
+                data_origin=DataOrigin.USER,
+                implementation_status=ImplementationStatus.PRODUCTION,
+                insight_summary="同类商品评论样本关注清洗。",
+                common_needs=["便于清洗"],
+                prelaunch_validations=["验证拆洗路径"],
+                sample_limitations=["样本仅来自最终同类商品组"],
+                evidence_ids=["review-1"],
+            ),
+            "operation_plan": OperationPlan(
+                status=AgentStatus.SUCCEEDED,
+                data_origin=DataOrigin.USER,
+                implementation_status=ImplementationStatus.PRODUCTION,
+                positioning="完成验证后突出易清洗结构。",
+                evidence_ids=["market-1", "review-1"],
+                conclusions=[
+                    Conclusion(
+                        conclusion="同类商品评论样本关注清洗。",
+                        conclusion_type="user_insight",
+                        confidence=0.7,
+                        evidence_ids=["review-1"],
+                    ),
+                    Conclusion(
+                        conclusion="待验证假设：水泵结构可能带来噪音。",
+                        conclusion_type="reasoned_hypothesis",
+                        confidence=0.4,
+                    ),
+                ],
+            ),
+            "audit_result": AuditResult(
+                status=AuditStatus.PASS,
+                data_origin=DataOrigin.USER,
+                implementation_status=ImplementationStatus.PRODUCTION,
+            ),
+        }
+    )
+
+    report = ReportExporter(tmp_path).export(state)
+    markdown = Path(report.markdown_path).read_text(encoding="utf-8")
+
+    assert report.is_demo is False
+    assert report.implementation_status is ImplementationStatus.PRODUCTION
+    for heading in (
+        "## 新商品概况",
+        "## 同类市场商品分析",
+        "## 同类市场用户洞察",
+        "## 商品特征与同类用户关注点的对应分析",
+        "## 新商品上市前注意事项",
+        "## 数据支持的结论",
+        "## 基于商品属性的待验证假设",
+        "## 数据限制与证据索引",
+    ):
+        assert heading in markdown
+    assert "DEMO" not in markdown
+    assert "Scaffold" not in markdown
+    assert "当前商品反馈" not in markdown

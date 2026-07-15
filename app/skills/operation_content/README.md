@@ -1,6 +1,6 @@
 # OperationContentSkill
 
-This skill owns the versioned rules used by `OperationsDecisionAgent` to create deterministic Demo
+This skill owns the versioned rules used by `OperationsDecisionAgent` to create deterministic
 drafts for product titles, five selling-point bullets, descriptions, advertising keywords, and
 customer-service replies. The YAML file is the editable policy source; `skill.py` validates it,
 builds content only from the supplied `ProductProfile`, and audits length, completeness, and

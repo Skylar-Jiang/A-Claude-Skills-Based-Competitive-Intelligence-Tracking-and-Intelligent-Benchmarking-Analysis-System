@@ -1,1 +1,1 @@
-"""Application services for the TradePilot scaffold."""
+"""Application services for TradePilot."""

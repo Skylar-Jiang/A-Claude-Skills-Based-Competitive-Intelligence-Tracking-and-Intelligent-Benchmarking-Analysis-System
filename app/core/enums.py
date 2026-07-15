@@ -31,11 +31,17 @@ class AuditStatus(StrEnum):
 
 class ImplementationStatus(StrEnum):
     SCAFFOLD = "scaffold"
+    PRODUCTION = "production"
 
 
 class KnowledgeType(StrEnum):
     PRODUCT_KNOWLEDGE = "product_knowledge"
     REVIEW_INSIGHT = "review_insight"
+
+
+class RetrievalScope(StrEnum):
+    EXACT_PRODUCT = "exact_product"
+    PEER_GROUP = "peer_group"
 
 
 class RunStatus(StrEnum):
@@ -64,3 +70,4 @@ class ErrorCode(StrEnum):
     WORKFLOW_FAILED = "workflow_failed"
     STRUCTURED_OUTPUT_INVALID = "structured_output_invalid"
     DEMO_DATA_NOT_ALLOWED = "demo_data_not_allowed"
+    DATA_PREPARATION_REQUIRED = "data_preparation_required"

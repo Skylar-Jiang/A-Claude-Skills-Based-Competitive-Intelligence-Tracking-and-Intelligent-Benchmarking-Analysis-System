@@ -1,0 +1,18 @@
+matcher_version: peer-matcher-v2
+accessory_terms:
+  - replacement filter
+  - replacement filters
+  - filter cartridge
+  - pump
+  - mat
+  - cleaning brush
+  - power adapter
+  - replacement part
+  - accessory
+  - refill
+prefilter_limit: 300
+rerank_limit: 40
+final_peer_limit: 20
+minimum_rule_score: 0.2
+minimum_semantic_score: 0.45
+minimum_peer_count: 10

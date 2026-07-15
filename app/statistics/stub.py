@@ -7,7 +7,13 @@ from app.statistics.contracts import StatisticsResult
 class ScaffoldStatisticsProvider:
     """Injection default; real SQL statistics are intentionally deferred."""
 
-    def get_statistics(self, *, product: ProductProfile) -> StatisticsResult:
+    def get_statistics(
+        self,
+        *,
+        product: ProductProfile,
+        peer_group_id: str | None = None,
+    ) -> StatisticsResult:
+        del peer_group_id
         return StatisticsResult(
             product_id=product.product_id,
             status=AgentStatus.INSUFFICIENT_EVIDENCE,

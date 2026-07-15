@@ -1,9 +1,10 @@
 from decimal import Decimal
+from statistics import median
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.enums import AgentStatus, DataOrigin
+from app.core.enums import AgentStatus, DataOrigin, ImplementationStatus
 from app.db.models.core import CompetitorOffer, KnowledgeSource, Product
 from app.schemas.common import DataGap
 from app.schemas.product import ProductProfile
@@ -24,7 +25,14 @@ class PetSuppliesStatisticsProvider:
         self.session = session
         self.fallback = ScaffoldStatisticsProvider()
 
-    def get_statistics(self, *, product: ProductProfile) -> StatisticsResult:
+    def get_statistics(
+        self,
+        *,
+        product: ProductProfile,
+        peer_group_id: str | None = None,
+    ) -> StatisticsResult:
+        if peer_group_id:
+            return self._get_peer_group_statistics(product=product, peer_group_id=peer_group_id)
         if product.data_origin is not DataOrigin.REAL:
             return self.fallback.get_statistics(product=product)
 
@@ -61,6 +69,7 @@ class PetSuppliesStatisticsProvider:
                 product_id=product.product_id,
                 status=AgentStatus.INSUFFICIENT_EVIDENCE,
                 data_origin=product.data_origin,
+                implementation_status=ImplementationStatus.PRODUCTION,
                 evidence_ids=evidence_ids,
                 data_gaps=[
                     DataGap(
@@ -88,6 +97,70 @@ class PetSuppliesStatisticsProvider:
             product_id=product.product_id,
             status=AgentStatus.SUCCEEDED,
             data_origin=product.data_origin,
+            implementation_status=ImplementationStatus.PRODUCTION,
+            metrics=metrics,
+            evidence_ids=evidence_ids,
+        )
+
+    def _get_peer_group_statistics(
+        self,
+        *,
+        product: ProductProfile,
+        peer_group_id: str,
+    ) -> StatisticsResult:
+        offers = [
+            offer
+            for offer in self.session.scalars(select(CompetitorOffer)).all()
+            if (offer.attributes_json or {}).get("peer_group_id") == peer_group_id
+        ]
+        if not offers:
+            return StatisticsResult(
+                product_id=product.product_id,
+                status=AgentStatus.INSUFFICIENT_EVIDENCE,
+                data_origin=DataOrigin.REAL,
+                implementation_status=ImplementationStatus.PRODUCTION,
+                data_gaps=[
+                    DataGap(
+                        code="peer_group_offers_missing",
+                        field="competitor_offers",
+                        reason=f"No real peer offers exist for peer group {peer_group_id}.",
+                        required_for="peer group statistics computation",
+                    )
+                ],
+            )
+        peer_product_ids = {offer.product_id for offer in offers}
+        evidence_ids = list(
+            self.session.scalars(
+                select(KnowledgeSource.source_id).where(KnowledgeSource.product_id.in_(peer_product_ids))
+            ).all()
+        )
+        prices = [_to_decimal((offer.attributes_json or {}).get("price")) for offer in offers]
+        prices = [price for price in prices if price is not None]
+        ratings = [_to_decimal((offer.attributes_json or {}).get("average_rating")) for offer in offers]
+        ratings = [rating for rating in ratings if rating is not None]
+        rating_numbers = [
+            _to_decimal((offer.attributes_json or {}).get("rating_number")) for offer in offers
+        ]
+        rating_numbers = [value for value in rating_numbers if value is not None]
+        metrics: dict[str, Decimal] = {
+            "peer_product_count": Decimal(len(peer_product_ids)),
+            "priced_product_count": Decimal(len(prices)),
+            "total_rating_number": sum(rating_numbers, Decimal("0")),
+        }
+        if prices:
+            metrics.update(
+                min_price=min(prices),
+                max_price=max(prices),
+                avg_price=sum(prices, Decimal("0")) / Decimal(len(prices)),
+                median_price=median(prices),
+            )
+        if ratings:
+            metrics["avg_rating"] = sum(ratings, Decimal("0")) / Decimal(len(ratings))
+        return StatisticsResult(
+            product_id=product.product_id,
+            status=AgentStatus.SUCCEEDED,
+            data_origin=DataOrigin.REAL,
+            implementation_status=ImplementationStatus.PRODUCTION,
             metrics=metrics,
             evidence_ids=evidence_ids,
         )

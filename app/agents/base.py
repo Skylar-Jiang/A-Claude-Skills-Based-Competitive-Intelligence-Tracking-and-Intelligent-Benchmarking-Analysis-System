@@ -23,7 +23,7 @@ class BaseScaffoldAgent[InputT: BaseModel, OutputT: BaseModel](ABC):
 
     @abstractmethod
     def _run_stub(self, context: InputT) -> OutputT | dict[str, object]:
-        """Return deterministic scaffold data; subclasses must not call a model yet."""
+        """Run the mode-specific implementation behind the shared LCEL validation chain."""
 
     def _validate_output(self, value: OutputT | dict[str, object]) -> OutputT:
         return self.output_model.model_validate(value)

@@ -109,7 +109,7 @@ class OpenAICompatibleEmbedding:
         last_error: Exception | None = None
         for _ in range(self.max_retries):
             try:
-                with httpx.Client(timeout=self.timeout) as client:
+                with httpx.Client(timeout=self.timeout, trust_env=False) as client:
                     response = client.post(
                         f"{self.base_url}/embeddings",
                         headers={"Authorization": f"Bearer {self.api_key}"},
@@ -140,13 +140,20 @@ def create_embedding_function(settings: Settings | None = None, *, offline: bool
     resolved = settings or get_settings()
     if offline or not resolved.embedding_model:
         return HashEmbedding()
-    if not resolved.openai_api_key:
+    qwen_embedding = resolved.embedding_model.startswith("text-embedding-")
+    api_key = resolved.qwen_api_key if qwen_embedding else resolved.openai_api_key
+    base_url = resolved.qwen_base_url if qwen_embedding else resolved.openai_base_url
+    if not api_key:
         raise LLMNotConfiguredError()
     return OpenAICompatibleEmbedding(
         model_name=resolved.embedding_model,
-        base_url=resolved.openai_base_url,
-        api_key=resolved.openai_api_key,
-        batch_size=resolved.rag_embedding_batch_size,
+        base_url=base_url,
+        api_key=api_key,
+        batch_size=(
+            min(resolved.rag_embedding_batch_size, 10)
+            if resolved.embedding_model == "text-embedding-v4"
+            else resolved.rag_embedding_batch_size
+        ),
         concurrency=resolved.rag_embedding_concurrency,
         timeout=resolved.model_timeout_seconds,
         max_retries=resolved.model_max_retries,

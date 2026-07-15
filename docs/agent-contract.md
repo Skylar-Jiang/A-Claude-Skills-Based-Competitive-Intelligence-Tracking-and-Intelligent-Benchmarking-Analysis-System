@@ -1,23 +1,19 @@
 # Agent contract
 
-Every Agent has its own input model, output model, file, LCEL `RunnableSequence`, and LangGraph node.
-All inputs and outputs are validated by Pydantic v2.
+Every Agent has its own Pydantic input/output, LCEL sequence, model-backed Real path, deterministic Demo compatibility
+path, and LangGraph node.
 
-| Agent | Output | Current behavior | Future owner |
+| Agent | Real provider | Evidence scope | Output responsibility |
 | --- | --- | --- | --- |
-| ProductMarketAgent | `ProductMarketAnalysis` | Deterministic Demo scaffold or `insufficient_evidence` | Teammate two |
-| UserInsightAgent | `UserInsight` | Deterministic Demo scaffold or `insufficient_evidence` | Teammate two |
-| OperationsDecisionAgent | `OperationPlan` | Binds existing IDs and emits no business rules | Teammate three |
-| EvidenceAuditAgent | `AuditResult` | Checks Demo/Scaffold markers only | Teammate three |
+| ProductMarketAgent | DeepSeek | candidate profile, peer products, SQL statistics | price plus features, structure, positioning, ratings, homogenization, differentiation, missing parameters, validations |
+| UserInsightAgent | DeepSeek | peer reviews and sample boundary | needs, positives, pains, purchase factors, use/maintenance concerns, validations, opportunities, limitations |
+| OperationsDecisionAgent | Qwen | validated parallel outputs and existing evidence IDs | positioning, evidence-bound conclusions, launch actions |
+| EvidenceAuditAgent | Qwen plus deterministic guards | plan, all carried evidence, SQL statistics, expected peer group | attribution, scope, accessory, numeric, hypothesis, ID, conflict, and risk checks |
 
-All four outputs include `data_origin=demo` and `implementation_status=scaffold`. No complete Prompt,
-sentiment logic, market statistics, decision rules, marketing copy, or semantic audit exists here.
-Agent contracts and the StateGraph field boundaries are the stable extension points.
+Real outputs use `implementation_status=production`. Model JSON is parsed and normalized before Pydantic validation;
+unknown evidence IDs are removed, invalid status prose is converted from the actual valid-evidence boundary, and
+unsupported numeric values are replaced with an explicit pending-validation marker. Model audit findings are advisory;
+deterministic checks alone decide blocking rejection and manual review.
 
-`ProductMarketAgentInput` and `UserInsightAgentInput` both require the same validated
-`StatisticsResult`. The `statistics_provider` LangGraph node writes
-`TradePilotState.statistics_result` once before those two nodes fan out. The default
-`ScaffoldStatisticsProvider` returns empty metrics and `insufficient_evidence`; teammate one replaces
-the provider, while teammate two consumes the contract. Neither team needs to edit the graph.
-
-The Contract Maintainer owns `app/agents/contracts.py`, `TradePilotState`, and graph topology.
+ProductMarketAgent and UserInsightAgent receive the same `peer_group_id` and selected ASIN set and run in parallel.
+No Agent may call the database or claim peer reviews belong to the candidate product.

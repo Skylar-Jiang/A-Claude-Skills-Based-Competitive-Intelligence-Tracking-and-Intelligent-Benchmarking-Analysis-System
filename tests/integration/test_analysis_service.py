@@ -54,7 +54,16 @@ def test_analysis_service_persists_four_outputs_evidence_state_and_report(tmp_pa
             "persist_and_export",
         }
         assert session.scalar(select(func.count()).select_from(AgentOutput)) == 4
-        assert session.scalar(select(func.count()).select_from(EvidenceReferenceRecord)) == 2
+        evidence = session.scalars(select(EvidenceReferenceRecord)).all()
+        assert len(evidence) == 3
+        assert {item.payload_json["evidence_type"] for item in evidence} == {
+            "demo_document",
+            "sql_statistics",
+        }
+        assert {item.knowledge_type for item in evidence} == {
+            "product_knowledge",
+            "review_insight",
+        }
         assert session.scalar(select(func.count()).select_from(Report)) == 1
         report = service.get_report(run.report_id)
         assert Path(report.json_path).exists()

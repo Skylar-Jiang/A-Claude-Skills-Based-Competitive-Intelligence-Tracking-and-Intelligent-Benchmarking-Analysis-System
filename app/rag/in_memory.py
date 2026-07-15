@@ -1,4 +1,4 @@
-from app.core.enums import AgentStatus, KnowledgeType
+from app.core.enums import AgentStatus, KnowledgeType, RetrievalScope
 from app.rag.contracts import KnowledgeDocument
 from app.schemas.common import DataGap
 from app.schemas.evidence import EvidenceReference, RetrievalResult
@@ -29,12 +29,24 @@ class InMemoryKnowledgeStore:
         product_id: str,
         knowledge_type: KnowledgeType,
         top_k: int = 5,
+        scope: RetrievalScope = RetrievalScope.EXACT_PRODUCT,
+        peer_group_id: str | None = None,
+        filters: dict[str, object] | None = None,
+        fetch_k: int | None = None,
     ) -> RetrievalResult:
-        del query
+        del query, fetch_k
+        if scope is RetrievalScope.PEER_GROUP and not peer_group_id:
+            raise ValueError("peer_group_id is required for peer_group retrieval")
         matches = [
             document
             for document in self._documents.values()
-            if document.product_id == product_id and document.knowledge_type is knowledge_type
+            if document.knowledge_type is knowledge_type
+            and (
+                document.product_id == product_id
+                if scope is RetrievalScope.EXACT_PRODUCT
+                else document.metadata.get("peer_group_id") == peer_group_id
+            )
+            and all(document.metadata.get(key) == value for key, value in (filters or {}).items())
         ][:top_k]
         if not matches:
             return RetrievalResult(
@@ -60,7 +72,16 @@ class InMemoryKnowledgeStore:
                     excerpt=document.content,
                     data_origin=document.data_origin,
                     is_demo=document.data_origin.value == "demo",
-                    metadata=document.metadata,
+                    metadata={
+                        **document.metadata,
+                        "product_id": document.product_id,
+                        "retrieval_scope": scope.value,
+                        **(
+                            {"candidate_product_id": product_id, "peer_group_id": peer_group_id}
+                            if scope is RetrievalScope.PEER_GROUP
+                            else {}
+                        ),
+                    },
                 )
                 for document in matches
             ],

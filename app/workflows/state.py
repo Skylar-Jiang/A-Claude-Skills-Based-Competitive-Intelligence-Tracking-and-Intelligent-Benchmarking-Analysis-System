@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
-from app.core.enums import DataMode
+from app.core.enums import DataMode, RetrievalScope
 from app.schemas.analysis import AuditResult, OperationPlan, ProductMarketAnalysis, UserInsight
 from app.schemas.common import AgentExecution, DataGap, utc_now
 from app.schemas.evidence import EvidenceReference
@@ -24,6 +24,19 @@ class TradePilotState(BaseModel):
     thread_id: str
     data_mode: DataMode
     product_profile: ProductProfile
+    retrieval_scope: RetrievalScope = RetrievalScope.EXACT_PRODUCT
+    peer_group_id: str | None = None
+    selected_peer_products: list[dict[str, Any]] = Field(default_factory=list)
+    selected_parent_asins: list[str] = Field(default_factory=list)
+    peer_group_statistics: StatisticsResult | None = None
+    product_evidence: list[EvidenceReference] = Field(default_factory=list)
+    review_evidence: list[EvidenceReference] = Field(default_factory=list)
+    review_sample_scope: dict[str, Any] = Field(default_factory=dict)
+    match_method: str = ""
+    match_limitations: list[str] = Field(default_factory=list)
+    vision_analysis: dict[str, Any] | None = None
+    peer_selection_metadata: dict[str, Any] = Field(default_factory=dict)
+    workflow_metadata: dict[str, Any] = Field(default_factory=dict)
     target_market: str = ""
     user_constraints: dict[str, Any] = Field(default_factory=dict)
     product_market_analysis: ProductMarketAnalysis | None = None

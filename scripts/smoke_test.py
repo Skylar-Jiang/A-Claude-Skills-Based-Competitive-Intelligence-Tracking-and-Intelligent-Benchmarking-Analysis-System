@@ -26,59 +26,61 @@ def main() -> None:
         database_url = f"sqlite:///{root / 'smoke.db'}"
         upgrade_database(database_url)
         engine = create_engine(database_url)
-        with Session(engine) as session:
-            store = create_knowledge_store()
-            profile = load_domain_profile(
-                "generic_cross_border_demo",
-                profiles_dir=ROOT / "config" / "domain_profiles",
-            )
-            product = load_domain_adapter(profile).seed(
-                session,
-                SqlAlchemyProductRepository(session),
-                store,
-            )
-            service = AnalysisService(
-                session=session,
-                knowledge_store=store,
-                report_dir=root / "reports",
-                settings=Settings(
-                    _env_file=None,
-                    database_url=f"sqlite:///{root / 'smoke.db'}",
-                ),
-            )
-            run = service.start(
-                AnalysisRunCreate(product_id=product.product_id, data_mode=DataMode.DEMO)
-            )
-            report = service.get_report(run.report_id or "")
-            json_payload = json.loads(Path(report.json_path).read_text(encoding="utf-8"))
-            markdown = Path(report.markdown_path).read_text(encoding="utf-8")
-            counts = {
-                "agent_outputs": session.scalar(select(func.count()).select_from(AgentOutput)),
-                "evidence_references": session.scalar(
-                    select(func.count()).select_from(EvidenceReferenceRecord)
-                ),
-                "reports": session.scalar(select(func.count()).select_from(Report)),
-            }
-            assert run.status is RunStatus.SUCCEEDED
-            assert counts == {"agent_outputs": 4, "evidence_references": 2, "reports": 1}
-            assert json_payload["data_origin"] == "demo"
-            assert json_payload["implementation_status"] == "scaffold"
-            assert "DEMO" in markdown and "Scaffold" in markdown
-            print(
-                json.dumps(
-                    {
-                        "status": "ok",
-                        "data_origin": "demo",
-                        "implementation_status": "scaffold",
-                        "product_id": product.product_id,
-                        "run_id": run.run_id,
-                        "report_id": report.report_id,
-                        **counts,
-                    },
-                    ensure_ascii=False,
+        try:
+            with Session(engine) as session:
+                store = create_knowledge_store()
+                profile = load_domain_profile(
+                    "generic_cross_border_demo",
+                    profiles_dir=ROOT / "config" / "domain_profiles",
                 )
-            )
-        engine.dispose()
+                product = load_domain_adapter(profile).seed(
+                    session,
+                    SqlAlchemyProductRepository(session),
+                    store,
+                )
+                service = AnalysisService(
+                    session=session,
+                    knowledge_store=store,
+                    report_dir=root / "reports",
+                    settings=Settings(
+                        _env_file=None,
+                        database_url=f"sqlite:///{root / 'smoke.db'}",
+                    ),
+                )
+                run = service.start(
+                    AnalysisRunCreate(product_id=product.product_id, data_mode=DataMode.DEMO)
+                )
+                report = service.get_report(run.report_id or "")
+                json_payload = json.loads(Path(report.json_path).read_text(encoding="utf-8"))
+                markdown = Path(report.markdown_path).read_text(encoding="utf-8")
+                counts = {
+                    "agent_outputs": session.scalar(select(func.count()).select_from(AgentOutput)),
+                    "evidence_references": session.scalar(
+                        select(func.count()).select_from(EvidenceReferenceRecord)
+                    ),
+                    "reports": session.scalar(select(func.count()).select_from(Report)),
+                }
+                assert run.status is RunStatus.SUCCEEDED
+                assert counts == {"agent_outputs": 4, "evidence_references": 3, "reports": 1}
+                assert json_payload["data_origin"] == "demo"
+                assert json_payload["implementation_status"] == "scaffold"
+                assert "DEMO" in markdown and "Scaffold" in markdown
+                print(
+                    json.dumps(
+                        {
+                            "status": "ok",
+                            "data_origin": "demo",
+                            "implementation_status": "scaffold",
+                            "product_id": product.product_id,
+                            "run_id": run.run_id,
+                            "report_id": report.report_id,
+                            **counts,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+        finally:
+            engine.dispose()
 
 
 if __name__ == "__main__":

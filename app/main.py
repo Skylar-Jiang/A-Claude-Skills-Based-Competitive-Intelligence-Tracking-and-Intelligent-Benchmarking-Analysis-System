@@ -34,15 +34,22 @@ def create_app(
         upgrade_database(resolved.database_url)
         application.state.settings = resolved
         application.state.session_factory = session_factory
-        application.state.knowledge_store = knowledge_store_factory()
+        application.state.knowledge_store = (
+            create_knowledge_store(resolved)
+            if knowledge_store_factory is create_knowledge_store
+            else knowledge_store_factory()
+        )
         application.state.statistics_provider_factory = statistics_provider_factory
         yield
         engine.dispose()
 
     application = FastAPI(
-        title="TradePilot Backend Scaffold",
+        title="TradePilot Backend",
         version=resolved.app_version,
-        description="Domain-neutral multi-agent backend scaffold. Demo outputs are not real analysis.",
+        description=(
+            "Evidence-grounded peer-group analysis for unlisted pet products, with LCEL Agents, RAG, SQL, SSE, "
+            "and Markdown/JSON reports."
+        ),
         lifespan=lifespan,
     )
 

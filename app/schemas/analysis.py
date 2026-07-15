@@ -31,7 +31,19 @@ class ScaffoldAgentOutput(BaseModel):
 
 
 class ProductMarketAnalysis(ScaffoldAgentOutput):
+    peer_group_id: str | None = None
+    selected_parent_asins: list[str] = Field(default_factory=list)
     product_summary: str = ""
+    price_analysis: str = ""
+    feature_baseline: list[str] = Field(default_factory=list)
+    structure_and_scenarios: list[str] = Field(default_factory=list)
+    brand_positioning: list[str] = Field(default_factory=list)
+    rating_analysis: str = ""
+    homogenization_risks: list[str] = Field(default_factory=list)
+    differentiation_opportunities: list[str] = Field(default_factory=list)
+    missing_parameters: list[str] = Field(default_factory=list)
+    prelaunch_validations: list[str] = Field(default_factory=list)
+    reasoned_hypotheses: list[str] = Field(default_factory=list)
     product_category: str = ""
     product_functions: list[str] = Field(default_factory=list)
     key_parameters: list[str] = Field(default_factory=list)
@@ -40,21 +52,31 @@ class ProductMarketAnalysis(ScaffoldAgentOutput):
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
     competitor_differences: list[str] = Field(default_factory=list)
-    price_analysis: str | None = None
     target_market_fit: str | None = None
     optimization_suggestions: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
 
 
 class UserInsight(ScaffoldAgentOutput):
+    peer_group_id: str | None = None
+    selected_parent_asins: list[str] = Field(default_factory=list)
     insight_summary: str = ""
+    common_needs: list[str] = Field(default_factory=list)
+    positive_experiences: list[str] = Field(default_factory=list)
+    pain_points: list[str] = Field(default_factory=list)
+    purchase_factors: list[str] = Field(default_factory=list)
+    feature_usage_maintenance_concerns: list[str] = Field(default_factory=list)
+    prelaunch_validations: list[str] = Field(default_factory=list)
+    convertible_selling_points: list[str] = Field(default_factory=list)
+    optimization_directions: list[str] = Field(default_factory=list)
+    sample_limitations: list[str] = Field(default_factory=list)
+    reasoned_hypotheses: list[str] = Field(default_factory=list)
     target_user_profiles: list[str] = Field(default_factory=list)
     identity_or_demographic_observations: list[str] = Field(default_factory=list)
     usage_scenarios: list[str] = Field(default_factory=list)
     purchase_motivations: list[str] = Field(default_factory=list)
     positive_concerns: list[str] = Field(default_factory=list)
     frequent_keywords: list[str] = Field(default_factory=list)
-    pain_points: list[str] = Field(default_factory=list)
     negative_review_reasons: list[str] = Field(default_factory=list)
     user_expectations: list[str] = Field(default_factory=list)
     improvement_suggestions: list[str] = Field(default_factory=list)
@@ -63,6 +85,9 @@ class UserInsight(ScaffoldAgentOutput):
 class OperationPlan(ScaffoldAgentOutput):
     positioning: str = ""
     next_steps: list[str] = Field(default_factory=list)
+    peer_group_id: str | None = None
+    selected_parent_asins: list[str] = Field(default_factory=list)
+    analysis_scopes: dict[str, Any] = Field(default_factory=dict)
 
 
 class AuditResult(BaseModel):

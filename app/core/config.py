@@ -29,6 +29,10 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = None
     openai_base_url: str | None = None
+    deepseek_api_key: str | None = None
+    deepseek_base_url: str = "https://api.deepseek.com"
+    qwen_api_key: str | None = None
+    qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     model_fast: str | None = None
     model_analysis: str | None = None
     model_report: str | None = None
@@ -36,6 +40,7 @@ class Settings(BaseSettings):
     model_temperature: float = 0.1
     model_timeout_seconds: int = 120
     model_max_retries: int = 3
+    model_max_tokens: int = 4096
 
     embedding_model: str | None = None
     embedding_device: str = "cpu"
@@ -66,12 +71,25 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = 300
     rag_use_chroma: bool = False
     rag_manifest_path: Path = Path("data/index_manifest.sqlite")
+    peer_metadata_path: Path = Path("data/filtered/meta_pet_supplies_prefiltered.jsonl")
+    peer_reviews_path: Path = Path("data/filtered/pet_supplies_reviews_prefiltered.jsonl")
+    peer_cache_dir: Path = Path("data/demo/cache")
+    peer_match_config_path: Path = Path("config/peer_matching.yaml")
+    peer_max_reviews: int = 300
     log_level: str = "INFO"
     default_data_mode: str = Field(default="demo")
 
     @property
     def real_model_configured(self) -> bool:
-        return bool(self.openai_api_key and self.model_analysis)
+        provider_models = bool(
+            self.deepseek_api_key
+            and self.qwen_api_key
+            and self.model_analysis
+            and self.model_fast
+            and self.model_report
+        )
+        legacy_single_provider = bool(self.openai_api_key and self.model_analysis)
+        return provider_models or legacy_single_provider
 
 
 @lru_cache(maxsize=1)

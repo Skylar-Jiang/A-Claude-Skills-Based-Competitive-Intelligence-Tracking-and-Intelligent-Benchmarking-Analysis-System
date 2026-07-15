@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from langchain_core.runnables import RunnableSequence
 
 from app.agents.contracts import EvidenceAuditAgentInput, OperationsDecisionAgentInput
@@ -8,6 +10,7 @@ from app.schemas.analysis import AuditResult, OperationPlan, ProductMarketAnalys
 from app.schemas.common import Conclusion
 from app.schemas.product import ProductProfile
 from app.skills.operation_content import OperationContentSkill
+from app.statistics.contracts import StatisticsResult
 from tests.builders import build_market_analysis, build_user_insight
 
 
@@ -135,3 +138,78 @@ def test_audit_detects_semantic_positioning_conflict(demo_product: ProductProfil
     assert audit.status is AuditStatus.REJECTED
     assert audit.conflicting_evidence_ids == ["price-1", "position-1"]
     assert any("semantic_conflict" in issue for issue in audit.issues)
+
+
+def test_audit_rejects_mismatched_parallel_peer_scopes_and_peer_review_misattribution(
+    demo_product: ProductProfile,
+) -> None:
+    plan = OperationPlan(
+        status=AgentStatus.SUCCEEDED,
+        data_origin=DataOrigin.DEMO,
+        positioning="当前商品反馈显示需要改善清洗。",
+        peer_group_id="group-a",
+        selected_parent_asins=["PEER-A"],
+        analysis_scopes={
+            "product_market_agent": {
+                "peer_group_id": "group-a",
+                "selected_parent_asins": ["PEER-A"],
+            },
+            "user_insight_agent": {
+                "peer_group_id": "group-b",
+                "selected_parent_asins": ["PEER-B"],
+            },
+        },
+        conclusions=[
+            Conclusion(
+                conclusion="水泵结构可能带来噪音。",
+                conclusion_type="reasoned_hypothesis",
+                confidence=0.4,
+            )
+        ],
+    )
+
+    audit = EvidenceAuditAgent().run(
+        EvidenceAuditAgentInput(product=demo_product, operation_plan=plan)
+    )
+
+    assert audit.status is AuditStatus.REJECTED
+    assert any("agent_peer_group_mismatch" in issue for issue in audit.issues)
+    assert any("agent_product_scope_mismatch" in issue for issue in audit.issues)
+    assert any("peer_review_misattribution" in issue for issue in audit.issues)
+    assert any("unlabeled_hypothesis" in issue for issue in audit.issues)
+
+
+def test_audit_accepts_two_decimal_rounding_of_structured_statistics(
+    demo_product: ProductProfile,
+) -> None:
+    plan = OperationPlan(
+        status=AgentStatus.SUCCEEDED,
+        data_origin=DataOrigin.DEMO,
+        positioning="Use the validated peer average of 30.76 for price comparison.",
+        conclusions=[
+            Conclusion(
+                conclusion="The rounded peer average is 30.76.",
+                conclusion_type="market_fact",
+                confidence=0.9,
+                evidence_ids=["sql-statistics"],
+            )
+        ],
+        evidence_ids=["sql-statistics"],
+    )
+    statistics = StatisticsResult(
+        product_id=demo_product.product_id,
+        status=AgentStatus.SUCCEEDED,
+        data_origin=DataOrigin.DEMO,
+        metrics={"avg_price": Decimal("30.7555")},
+        evidence_ids=["sql-statistics"],
+    )
+
+    audit = EvidenceAuditAgent().run(
+        EvidenceAuditAgentInput(
+            product=demo_product,
+            operation_plan=plan,
+            statistics=statistics,
+        )
+    )
+
+    assert not any("30.76" in issue for issue in audit.issues)

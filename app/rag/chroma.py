@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.core.enums import AgentStatus, DataOrigin, KnowledgeType
+from app.core.enums import AgentStatus, DataOrigin, KnowledgeType, RetrievalScope
 from app.rag.contracts import KnowledgeDocument
 from app.schemas.common import DataGap
 from app.schemas.evidence import EvidenceReference, RetrievalResult
@@ -122,10 +122,17 @@ class ChromaKnowledgeStore:
         product_id: str,
         knowledge_type: KnowledgeType,
         top_k: int = 5,
+        scope: RetrievalScope = RetrievalScope.EXACT_PRODUCT,
+        peer_group_id: str | None = None,
         filters: dict[str, object] | None = None,
         fetch_k: int | None = None,
     ) -> RetrievalResult:
-        where: dict[str, object] = {"product_id": product_id}
+        if scope is RetrievalScope.PEER_GROUP:
+            if not peer_group_id:
+                raise ValueError("peer_group_id is required for peer_group retrieval")
+            where: dict[str, object] = {"peer_group_id": peer_group_id}
+        else:
+            where = {"product_id": product_id}
         for key, value in (filters or {}).items():
             if value is not None and value != "":
                 where[key] = value
@@ -199,7 +206,13 @@ class ChromaKnowledgeStore:
                     is_demo=origin is DataOrigin.DEMO,
                     metadata={
                         **metadata,
-                        "product_id": product_id,
+                        "product_id": str(metadata.get("product_id") or product_id),
+                        "retrieval_scope": scope.value,
+                        **(
+                            {"candidate_product_id": product_id, "peer_group_id": peer_group_id}
+                            if scope is RetrievalScope.PEER_GROUP
+                            else {}
+                        ),
                         "collection": self.collection_names[knowledge_type],
                         "retrieval_score": score,
                         "query": query,
