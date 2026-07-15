@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from app.rag.chroma import ChromaKnowledgeStore
 from app.rag.embeddings import create_embedding_function
 from app.rag.evaluation import evaluate_collection, write_evaluation_report
 from app.rag.importers import iter_filtered_documents, validate_source
+from app.rag.manifest import IndexManifest, ManifestStats
 
 
 class FileLock:
@@ -61,9 +63,18 @@ def validate(args: argparse.Namespace) -> int:
 def index(args: argparse.Namespace) -> int:
     settings = get_settings()
     store = _store(offline=args.offline_embeddings)
+    embedding_model = getattr(store.embedding_function, "name", lambda: "configured")()
+    collections = [KnowledgeType(args.collection)] if args.collection else list(KnowledgeType)
+    started = time.perf_counter()
     with FileLock((settings.chroma_persist_dir or settings.chroma_dir) / ".index.lock"):
+        manifest = IndexManifest(settings.rag_manifest_path)
         if args.rebuild:
-            store.clear()
+            if args.collection:
+                store.clear_collection(KnowledgeType(args.collection))
+            else:
+                store.clear()
+            for knowledge_type in collections:
+                manifest.clear_collection(store.collection_names[knowledge_type])
         documents, summary = iter_filtered_documents(
             args.source,
             chunk_size=settings.rag_chunk_size,
@@ -72,26 +83,86 @@ def index(args: argparse.Namespace) -> int:
             knowledge_types={KnowledgeType(args.collection)} if args.collection else None,
         )
         batch = []
-        total_report = {"attempted": 0, "inserted_or_updated": 0, "skipped_unchanged": 0, "failed": 0}
+        batch_actions: list[str] = []
+        stats_by_collection: dict[str, ManifestStats] = {}
+        processed = 0
         for document in documents:
+            collection = store.collection_names[document.knowledge_type]
+            stats = stats_by_collection.setdefault(collection, ManifestStats())
+            decision = manifest.decide(collection=collection, document=document, embedding_model=embedding_model)
+            if decision.action == "skip":
+                stats.skipped += 1
+                processed += 1
+                if processed % args.progress_every == 0:
+                    _progress(processed, stats_by_collection)
+                continue
             batch.append(document)
+            batch_actions.append(decision.action)
             if len(batch) >= args.batch_size:
-                report = store.ingest_with_report(batch)
-                for key in total_report:
-                    total_report[key] += getattr(report, key)
+                _flush_batch(store, manifest, batch, batch_actions, stats_by_collection, embedding_model)
+                processed += len(batch)
+                if processed % args.progress_every == 0:
+                    _progress(processed, stats_by_collection)
                 batch.clear()
+                batch_actions.clear()
         if batch:
-            report = store.ingest_with_report(batch)
-            for key in total_report:
-                total_report[key] += getattr(report, key)
+            _flush_batch(store, manifest, batch, batch_actions, stats_by_collection, embedding_model)
+            processed += len(batch)
+            batch.clear()
+            batch_actions.clear()
+        manifest.commit()
         payload = {
             "source": str(args.source),
             "summary": asdict(summary),
-            "ingest": total_report,
+            "ingest": {collection: asdict(stats) for collection, stats in stats_by_collection.items()},
+            "manifest": manifest.status_counts(),
             "status": store.status(),
+            "embedding_model": embedding_model,
+            "elapsed_seconds": round(time.perf_counter() - started, 3),
         }
+        manifest.close()
         _print(payload, as_json=args.json)
-        return 1 if summary.failed or total_report["failed"] else 0
+        failed = summary.failed + sum(stats.failed for stats in stats_by_collection.values())
+        return 1 if failed else 0
+
+
+def _flush_batch(
+    store: ChromaKnowledgeStore,
+    manifest: IndexManifest,
+    batch: list,
+    actions: list[str],
+    stats_by_collection: dict[str, ManifestStats],
+    embedding_model: str,
+) -> None:
+    try:
+        store.ingest_with_report(batch)
+        for document, action in zip(batch, actions, strict=True):
+            collection = store.collection_names[document.knowledge_type]
+            stats = stats_by_collection.setdefault(collection, ManifestStats())
+            if action == "insert":
+                stats.inserted += 1
+            else:
+                stats.updated += 1
+            manifest.mark_success(collection=collection, document=document, embedding_model=embedding_model)
+        manifest.commit()
+    except Exception as exc:
+        for document in batch:
+            collection = store.collection_names[document.knowledge_type]
+            stats = stats_by_collection.setdefault(collection, ManifestStats())
+            stats.failed += 1
+            manifest.mark_failed(
+                collection=collection,
+                document=document,
+                embedding_model=embedding_model,
+                error=str(exc),
+            )
+        manifest.commit()
+        raise
+
+
+def _progress(processed: int, stats_by_collection: dict[str, ManifestStats]) -> None:
+    payload = {"processed": processed, "ingest": {key: asdict(value) for key, value in stats_by_collection.items()}}
+    print(json.dumps(payload, ensure_ascii=False), file=sys.stderr, flush=True)
 
 
 def status(args: argparse.Namespace) -> int:
@@ -143,7 +214,8 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser.add_argument("--rebuild", action="store_true")
     index_parser.add_argument("--limit", type=int, default=None)
     index_parser.add_argument("--collection", choices=[item.value for item in KnowledgeType], default=None)
-    index_parser.add_argument("--batch-size", type=int, default=get_settings().rag_batch_size)
+    index_parser.add_argument("--batch-size", type=int, default=get_settings().rag_index_batch_size)
+    index_parser.add_argument("--progress-every", type=int, default=1000)
     index_parser.set_defaults(func=index)
 
     status_parser = sub.add_parser("status", help="Show Chroma collection status.")

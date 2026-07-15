@@ -97,6 +97,13 @@ class ChromaKnowledgeStore:
             if collection.name in set(self.collection_names.values()):
                 self.client.delete_collection(name=collection.name)
 
+    def clear_collection(self, knowledge_type: KnowledgeType) -> None:
+        collection_name = self.collection_names[knowledge_type]
+        for collection in self.client.list_collections():
+            if collection.name == collection_name:
+                self.client.delete_collection(name=collection.name)
+                return
+
     def status(self) -> dict[str, dict[str, object]]:
         status: dict[str, dict[str, object]] = {}
         for knowledge_type in KnowledgeType:

@@ -44,9 +44,13 @@ class Settings(BaseSettings):
     rag_top_k: int = 8
     rag_score_threshold: float = 0.0
     rag_batch_size: int = 128
+    rag_embedding_batch_size: int = 32
+    rag_embedding_concurrency: int = 4
+    rag_index_batch_size: int = 32
     rag_chunk_size: int = 2800
     rag_chunk_overlap: int = 300
     rag_use_chroma: bool = False
+    rag_manifest_path: Path = Path("data/index_manifest.sqlite")
     log_level: str = "INFO"
     default_data_mode: str = Field(default="demo")
 

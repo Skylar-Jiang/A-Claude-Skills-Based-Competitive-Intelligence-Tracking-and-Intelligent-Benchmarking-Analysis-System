@@ -20,6 +20,8 @@ env/
 *.db
 *.sqlite
 *.sqlite3
+*.sqlite-shm
+*.sqlite-wal
 data/chroma/
 data/uploads/*
 data/reports/*
