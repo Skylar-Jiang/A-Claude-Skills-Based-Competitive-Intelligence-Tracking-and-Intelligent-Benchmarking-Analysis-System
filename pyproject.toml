@@ -21,6 +21,7 @@ testpaths = ["tests"]
 addopts = "--strict-markers"
 markers = [
     "real_model: calls the configured external analysis model",
+    "real_rerank: calls the configured external reranker model",
     "real_data: uses real filtered data and Chroma indexes",
 ]
 

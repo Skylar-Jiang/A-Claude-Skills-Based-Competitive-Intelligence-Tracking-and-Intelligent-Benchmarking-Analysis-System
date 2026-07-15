@@ -1,122 +1,139 @@
 # Team Two: RAG And Analysis Agents
 
-## Architecture
+## Scope
 
-Team two owns the evidence layer for `ProductMarketAgent` and `UserInsightAgent`.
-The workflow remains:
-
-`ProductProfile + RAG Evidence + StatisticsResult -> ProductMarketAgent / UserInsightAgent -> ProductMarketAnalysis / UserInsight`
-
-The LangGraph topology and shared Pydantic contracts are unchanged. Demo mode keeps offline deterministic behavior for
-tests. Real mode requires model configuration and `RAG_USE_CHROMA=true`; otherwise it returns an explicit service error
-instead of falling back to Demo.
+Team two owns the `product_knowledge` and `review_insight` evidence domains, the shared retrieval pipeline, and the
+`ProductMarketAgent` / `UserInsightAgent` LCEL chains. This document describes the pre-index implementation freeze. It
+does not claim the current local Chroma directory is fully indexed.
 
 ## Data Flow
 
-1. `python -m app.rag.cli validate --source data/filtered` profiles source files.
-2. `python -m app.rag.cli index --source data/filtered` converts rows into `KnowledgeDocument` chunks.
-3. Chroma stores two isolated collections: `product_knowledge` and `review_insight`.
-4. Workflow retrieval creates `EvidenceReference` records with source file, source row, content hash, query, collection,
-   and retrieval score.
-5. The two analysis agents validate model output and remove any evidence ID that was not supplied in the prompt.
+`ProductProfile + user_constraints -> RetrievalPipeline -> EvidenceReference + StatisticsResult -> Agent LCEL -> schema output`
 
-## data/filtered Mapping
+LangGraph orchestrates state and agent calls only. Query building, metadata filters, recall, deduplication, reranking,
+evidence binding, and sufficiency checks live in `app.rag.pipeline`.
 
-Actual files detected:
+## Retrieval Pipeline
 
-| File | Records | Collection | Key Fields |
-| --- | ---: | --- | --- |
-| `meta_pet_supplies_prefiltered.jsonl` | 161,540 | `product_knowledge` | `parent_asin`, `title`, `features`, `description`, `price`, `average_rating`, `rating_number`, `categories`, `details` |
-| `pet_supplies_reviews_prefiltered.jsonl` | 594,175 | `review_insight` | `parent_asin`, `asin`, `user_id`, `timestamp`, `rating`, `title`, `text`, `verified_purchase`, `helpful_vote` |
+The pipeline runs in this order:
 
-`parent_asin` is mapped to the stable TradePilot `product_id` with the same UUID5 rule used by the pet-supplies import
-script.
+1. Deterministic query builder.
+2. Metadata filter construction with `data_origin=real` and `is_demo=false`.
+3. Chroma vector recall.
+4. Filter relaxation when strict filters return nothing, while retaining real/demo markers.
+5. Vector score threshold.
+6. Stable deduplication by `evidence_id`, `document_id`, `review_id`, and `content_hash`.
+7. Source diversification with `RAG_MAX_PER_SOURCE`.
+8. Conditional reranker.
+9. Stable EvidenceReference binding with `RAG-PRODUCT-` or `RAG-REVIEW-` prefixes.
+10. Deterministic evidence sufficiency check.
 
-## Chunking
+`RetrievalBundle` records fetched, accepted, rejected, duplicate counts, filters, executed queries, rerank status,
+warnings, errors, missing evidence types, and latency.
 
-Product records become structured text sections: title, category path, brand/store, price, rating summary, feature
-bullets, description, and product parameters. Product chunks are paragraph-aware and avoid splitting parameter labels
-from values.
+## Query Builder
 
-Reviews keep one user's review as one document unless it is too long, in which case it is split by paragraph. Reviews
-are never merged across users.
+Product queries use category, description, features, materials, scenarios, target users, target market, target price,
+and constraints. They no longer use only `product.name`.
 
-## Metadata
+Review queries cover positive experience, durability complaints, size or fit, cleaning, odor, installation, pet
+acceptance, value for money, safety, and customer expectations.
 
-Every chunk carries scalar Chroma metadata:
+The builders are deterministic and omit empty values.
 
-`document_id`, `chunk_id`, `parent_id`, `chunk_index`, `content_hash`, `source_file`, `source_locator`, `source_row`,
-`knowledge_type`, `data_origin=real`, `is_demo=false`, `product_id`, `parent_asin`, `asin`, `product_name`,
-`category`, `brand`, `marketplace`, `target_market`, `language`, and collection-specific fields such as `rating`,
-`review_id`, `review_title`, `verified_purchase`, `listed_price`, and `currency`.
+## Metadata Filters
 
-## Environment
+Product filters support `product_id`, `parent_asin`, `asin`, `category`, `marketplace`, `target_market`, `language`,
+`data_origin`, and `is_demo`.
 
-Required for Real mode:
+Review filters additionally support `rating`, `rating_min`, `rating_max`, and `verified_purchase`.
 
-```powershell
-$env:OPENAI_BASE_URL="https://api.siliconflow.com/v1"
-$env:OPENAI_API_KEY="<local secret>"
-$env:MODEL_ANALYSIS="deepseek-ai/DeepSeek-V4-Pro"
-$env:MODEL_FAST="deepseek-ai/DeepSeek-V4-Pro"
-$env:EMBEDDING_MODEL="BAAI/bge-m3"
-$env:RERANK_MODEL="BAAI/bge-reranker-v2-m3"
-$env:RAG_USE_CHROMA="true"
-```
+Rating ranges use Chroma scalar range syntax. If a strict filter returns no results, the pipeline can relax optional
+filters and records `metadata_filter_relaxed`.
 
-Optional tuning: `MODEL_TEMPERATURE`, `MODEL_TIMEOUT_SECONDS`, `MODEL_MAX_RETRIES`, `RAG_FETCH_K`, `RAG_TOP_K`,
-`RAG_SCORE_THRESHOLD`, `RAG_BATCH_SIZE`, `RAG_CHUNK_SIZE`, and `RAG_CHUNK_OVERLAP`.
+## Reranker
 
-## Commands
+The main retrieval pipeline can call `Qwen/Qwen3-Reranker-0.6B`. Defaults are conservative:
+
+- `RERANK_ENABLED=false`
+- `RERANK_REQUIRED=false`
+- `RERANK_POLICY=conditional`
+- `RERANK_PRODUCT_ENABLED=false`
+- `RERANK_REVIEW_ENABLED=true`
+- `RERANK_MIN_CANDIDATES=8`
+- `RERANK_MAX_CANDIDATES=20`
+
+Vector score remains in `vector_score`; reranker score is stored separately in `rerank_score`. Evidence IDs are not
+changed by reranking. When reranking is unavailable and not required, the bundle records fallback details.
+
+## Agent LCEL
+
+Both analysis agents use:
+
+`input validation -> RunnableParallel(context, retrieval) -> context preparation -> prompt/model or deterministic path -> postprocess -> Pydantic validation`
+
+`ProductMarketAgent` consumes product evidence, user-provided product profile evidence, and `StatisticsResult`. It
+validates evidence IDs, records retrieval warnings/errors, carries statistics result IDs, and fills product-market
+fields such as category, functions, parameters, scenarios, target users, risks, strengths, weaknesses, and suggestions
+when the model provides them.
+
+`UserInsightAgent` consumes review evidence and `StatisticsResult`. It checks positive/negative coverage, prevents
+unsupported aggregate language, validates evidence IDs, and records missing evidence and warnings.
+
+## Statistics Boundary
+
+Exact prices, ratings, counts, ratios, averages, and percentages must come from `StatisticsResult` or deterministic
+tools. RAG evidence supports text facts and explanations only. If `StatisticsResult.status=insufficient_evidence`, the
+agents add statistics data gaps and do not estimate exact values.
+
+## LangGraph Boundary
+
+For REAL runs, `graph.py` no longer runs `store.retrieve(query=product.name)`. It normalizes product input, calls the
+statistics provider, and invokes the two agents. The agents own retrieval through the injected shared
+`RetrievalPipeline`. Demo runs keep the old in-memory evidence compatibility path so existing scaffold API contracts
+and persistence tests continue to pass.
+
+## Indexing Commands
+
+Read-only pre-index checks:
 
 ```powershell
 py -3.12 -m app.rag.cli validate --source data/filtered
-py -3.12 -m app.rag.cli index --source data/filtered
-py -3.12 -m app.rag.cli index --source data/filtered --rebuild
+py -3.12 -m app.rag.cli doctor
+py -3.12 -m app.rag.cli plan-index --source data/filtered
 py -3.12 -m app.rag.cli status
-py -3.12 -m app.rag.cli query --collection product_knowledge --product-id <product_id> --query "main functions and risks"
-py -3.12 -m app.rag.cli evaluate --output-dir data/reports/rag_eval
 ```
 
-For offline development and CI, add `--offline-embeddings` to use deterministic local embeddings without network calls.
+Indexing commands remain available but must not be run during pre-index validation:
 
-## Incremental Updates
-
-Chunk IDs are stable UUID5 values derived from source identity, chunk index, and content hash. Re-indexing performs
-Chroma upserts and skips unchanged chunks when `content_hash` matches. `--rebuild` clears both collections first.
-A file lock under the Chroma directory prevents two index jobs from running at the same time.
-
-## Agent Behavior
-
-`ProductMarketAgent` uses product evidence plus `StatisticsResult`. It may summarize functions, parameters, scenarios,
-advantages, risks, and market fit. Exact price, rating, count, and ratio claims must come from `StatisticsResult` or
-user-provided product fields.
-
-`UserInsightAgent` uses review evidence plus `StatisticsResult`. It may identify sample-level motivations, scenarios,
-positive concerns, pain points, and improvement requests. It cannot turn a single review into a market-wide trend.
-
-Both agents use strict prompts, parse JSON, validate with existing Pydantic schemas, remove invented evidence IDs, and
-return `insufficient_evidence` with `data_gaps` when evidence is missing.
+```powershell
+py -3.12 -m app.rag.cli index --source data/filtered
+py -3.12 -m app.rag.cli index --source data/filtered --rebuild
+```
 
 ## Evaluation
 
-The deterministic evaluator builds sanity queries from indexed documents and reports Hit@1, Hit@3, Hit@5, MRR, empty
-retrieval rate, duplicate result rate, metadata filter accuracy, average latency, and P95 latency. Sample run on the
-local test index:
+The committed evaluation dataset has 400 deterministic gold queries:
 
-| Collection | Hit@1 | Hit@3 | Hit@5 | MRR | Empty | Duplicate | Filter Accuracy | Avg ms | P95 ms |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `product_knowledge` | 1.000 | 1.000 | 1.000 | 1.000 | 0.000 | 0.000 | 1.000 | 109.3 | 177.7 |
-| `review_insight` | 1.000 | 1.000 | 1.000 | 1.000 | 0.000 | 0.000 | 1.000 | 3.8 | 5.4 |
+- 200 `product_knowledge`
+- 200 `review_insight`
 
-## Boundaries
+The latest committed reports compare vector-only and reranked retrieval. They are not a substitute for re-running
+evaluation after the full index is built.
 
-Team one owns SQL statistics and the `StatisticsResult` values. Team two consumes those values and does not derive exact
-numeric market facts from RAG excerpts. Team three consumes `ProductMarketAnalysis` and `UserInsight`; it should not
-expect hidden fields outside the existing schemas.
+## Tests
 
-## Known Data Gaps
+Default tests do not call external model services and do not modify the production Chroma directory. Real smoke tests
+are gated by environment variables.
 
-The filtered source has no explicit marketplace column, so the adapter marks records as `amazon_us`. Review language is
-not provided and is currently marked `en` for this filtered corpus. Reranker configuration is present, but the current
-implementation uses vector ranking plus deterministic deduplication unless a future reranker client is added.
+```powershell
+py -3.12 -m pytest -q
+py -3.12 -m ruff check app tests scripts
+py -3.12 -m compileall -q app tests scripts
+```
+
+## Known Limits Before Full Index
+
+The current local Chroma state is partial. Full-index evaluation must be rerun after indexing all filtered records.
+Gold query quality still benefits from human spot checks. Reranker latency is high and should stay conditional by
+default.

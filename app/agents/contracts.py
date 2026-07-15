@@ -10,12 +10,16 @@ class ProductMarketAgentInput(BaseModel):
     product: ProductProfile
     evidence: list[EvidenceReference] = Field(default_factory=list)
     statistics: StatisticsResult
+    user_constraints: dict[str, object] = Field(default_factory=dict)
+    original_user_input: dict[str, object] = Field(default_factory=dict)
 
 
 class UserInsightAgentInput(BaseModel):
     product: ProductProfile
     evidence: list[EvidenceReference] = Field(default_factory=list)
     statistics: StatisticsResult
+    user_constraints: dict[str, object] = Field(default_factory=dict)
+    original_user_input: dict[str, object] = Field(default_factory=dict)
 
 
 class OperationsDecisionAgentInput(BaseModel):

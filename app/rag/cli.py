@@ -171,6 +171,50 @@ def status(args: argparse.Namespace) -> int:
     return 0
 
 
+def doctor(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    spec = _load_index_spec(args.spec)
+    status_payload = _store(offline=args.offline_embeddings).status()
+    issues = _index_issues(spec, status_payload, settings)
+    payload = {
+        "spec": spec,
+        "status": status_payload,
+        "issues": issues,
+        "compatible": not issues,
+        "can_start_full_index": not issues,
+    }
+    _print(payload, as_json=args.json)
+    return 0 if not issues else 5
+
+
+def plan_index(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    spec = _load_index_spec(args.spec)
+    summary = validate_source(args.source)
+    status_payload = _store(offline=args.offline_embeddings).status()
+    issues = _index_issues(spec, status_payload, settings)
+    product_rows = sum(file.records for file in summary.files if file.mapped_knowledge_type == "product_knowledge")
+    review_rows = sum(file.records for file in summary.files if file.mapped_knowledge_type == "review_insight")
+    payload = {
+        "source": str(args.source),
+        "files": [asdict(file) for file in summary.files],
+        "estimated_product_chunks": product_rows,
+        "estimated_review_chunks": review_rows,
+        "estimated_total_source_rows": product_rows + review_rows,
+        "embedding_model": settings.embedding_model,
+        "index_version": spec.get("index_version"),
+        "collection_names": {
+            "product_knowledge": settings.chroma_product_collection,
+            "review_insight": settings.chroma_review_collection,
+        },
+        "current_index_compatible": not issues,
+        "rebuild_reasons": issues,
+        "can_start_full_index": not issues,
+    }
+    _print(payload, as_json=args.json)
+    return 0 if summary.files else 2
+
+
 def query(args: argparse.Namespace) -> int:
     knowledge_type = KnowledgeType(args.collection)
     result = _store(offline=args.offline_embeddings).retrieve(
@@ -231,6 +275,25 @@ def compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_index_spec(path: Path) -> dict[str, object]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _index_issues(spec: dict[str, object], status_payload: dict[str, dict[str, object]], settings) -> list[str]:  # type: ignore[no-untyped-def]
+    issues = []
+    if spec.get("embedding_model") != settings.embedding_model:
+        issues.append("embedding_model_changed")
+    if spec.get("product_collection") != settings.chroma_product_collection:
+        issues.append("product_collection_name_changed")
+    if spec.get("review_collection") != settings.chroma_review_collection:
+        issues.append("review_collection_name_changed")
+    for collection_name in (settings.chroma_product_collection, settings.chroma_review_collection):
+        metadata = status_payload.get(collection_name, {}).get("metadata", {})
+        if isinstance(metadata, dict) and metadata.get("embedding_model") != settings.embedding_model:
+            issues.append(f"{collection_name}:stored_embedding_model_mismatch")
+    return issues
+
+
 def load_metrics(path: Path):  # type: ignore[no-untyped-def]
     from app.rag.evaluation import EvaluationMetrics
 
@@ -258,6 +321,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     status_parser = sub.add_parser("status", help="Show Chroma collection status.")
     status_parser.set_defaults(func=status)
+
+    doctor_parser = sub.add_parser("doctor", help="Check runtime/index compatibility without indexing.")
+    doctor_parser.add_argument("--spec", type=Path, default=Path("config/rag_index_spec.json"))
+    doctor_parser.set_defaults(func=doctor)
+
+    plan_parser = sub.add_parser("plan-index", help="Plan full indexing without embedding or writing Chroma.")
+    plan_parser.add_argument("--source", type=Path, default=Path("data/filtered"))
+    plan_parser.add_argument("--spec", type=Path, default=Path("config/rag_index_spec.json"))
+    plan_parser.set_defaults(func=plan_index)
 
     query_parser = sub.add_parser("query", help="Run a retrieval query.")
     query_parser.add_argument("--collection", choices=[item.value for item in KnowledgeType], required=True)

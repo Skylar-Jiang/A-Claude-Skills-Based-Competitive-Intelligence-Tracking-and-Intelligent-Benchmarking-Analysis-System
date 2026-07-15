@@ -18,10 +18,11 @@ class RerankSummary:
 class Reranker:
     def __init__(self, settings: Settings) -> None:
         self.model_name = settings.rerank_model or ""
-        self.base_url = (settings.openai_base_url or "").rstrip("/")
+        self.base_url = (settings.rerank_base_url or settings.openai_base_url or "").rstrip("/")
         self.api_key = settings.openai_api_key or ""
-        self.timeout = settings.model_timeout_seconds
-        self.max_retries = max(1, settings.model_max_retries)
+        self.timeout = settings.rerank_timeout_seconds
+        self.max_retries = max(1, settings.rerank_max_retries)
+        self.required = settings.rerank_required
 
     @property
     def configured(self) -> bool:
@@ -57,6 +58,8 @@ class Reranker:
                 return self._apply_scores(items, payload), RerankSummary(used=True)
             except Exception as exc:
                 last_error = exc
+        if self.required:
+            raise RuntimeError(f"Reranker request failed and RERANK_REQUIRED=true: {last_error}") from last_error
         return items, RerankSummary(fallback=True, error=f"reranker_request_failed: {last_error}")
 
     @staticmethod

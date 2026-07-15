@@ -12,6 +12,7 @@ class StatisticsResult(BaseModel):
     """Validated numeric facts supplied by a statistics implementation."""
 
     product_id: str
+    result_id: str | None = None
     status: AgentStatus
     data_origin: DataOrigin
     implementation_status: ImplementationStatus = ImplementationStatus.SCAFFOLD

@@ -12,8 +12,9 @@ from app.agents.evidence_audit import EvidenceAuditAgent
 from app.agents.operations_decision import OperationsDecisionAgent
 from app.agents.product_market import ProductMarketAgent
 from app.agents.user_insight import UserInsightAgent
-from app.core.enums import AgentStatus, AuditStatus, KnowledgeType
+from app.core.enums import AgentStatus, AuditStatus, DataOrigin, KnowledgeType
 from app.rag.contracts import KnowledgeStore
+from app.rag.pipeline import RetrievalPipeline
 from app.schemas.common import AgentExecution
 from app.statistics.contracts import StatisticsProvider
 from app.statistics.stub import ScaffoldStatisticsProvider
@@ -40,8 +41,11 @@ class TradePilotWorkflow:
     ) -> None:
         self.knowledge_store = knowledge_store
         self.statistics_provider = statistics_provider or ScaffoldStatisticsProvider()
-        self.product_market_agent = product_market_agent or ProductMarketAgent()
-        self.user_insight_agent = user_insight_agent or UserInsightAgent()
+        self.retrieval_pipeline = RetrievalPipeline(knowledge_store)
+        self.product_market_agent = product_market_agent or ProductMarketAgent(
+            retrieval_pipeline=self.retrieval_pipeline
+        )
+        self.user_insight_agent = user_insight_agent or UserInsightAgent(retrieval_pipeline=self.retrieval_pipeline)
         self.operations_decision_agent = operations_decision_agent or OperationsDecisionAgent()
         self.evidence_audit_agent = evidence_audit_agent or EvidenceAuditAgent()
         self.persist_callback = persist_callback
@@ -90,23 +94,25 @@ class TradePilotWorkflow:
         product = state.product_profile.model_copy(
             update={"name": state.product_profile.name.strip(), "category": state.product_profile.category.strip()}
         )
-        evidence = []
-        gaps = []
-        for knowledge_type in KnowledgeType:
-            result = self.knowledge_store.retrieve(
-                query=product.name,
-                product_id=product.product_id,
-                knowledge_type=knowledge_type,
-            )
-            evidence.extend(result.evidence)
-            gaps.extend(result.data_gaps)
-        return {
+        updates: dict[str, object] = {
             "product_profile": product,
-            "rag_evidence": evidence,
-            "data_gaps": gaps,
             "current_node": "product_normalizer",
             "node_status": _execution("product_normalizer"),
         }
+        if product.data_origin is DataOrigin.DEMO:
+            evidence = []
+            gaps = []
+            for knowledge_type in KnowledgeType:
+                result = self.knowledge_store.retrieve(
+                    query=product.name,
+                    product_id=product.product_id,
+                    knowledge_type=knowledge_type,
+                )
+                evidence.extend(result.evidence)
+                gaps.extend(result.data_gaps)
+            updates["rag_evidence"] = evidence
+            updates["data_gaps"] = gaps
+        return updates
 
     def _statistics_provider(self, state: TradePilotState) -> dict[str, object]:
         result = self.statistics_provider.get_statistics(product=state.product_profile)
@@ -128,6 +134,8 @@ class TradePilotWorkflow:
                 product=state.product_profile,
                 evidence=evidence,
                 statistics=state.statistics_result,
+                user_constraints=state.user_constraints,
+                original_user_input={"target_market": state.target_market},
             )
         )
         return {
@@ -146,6 +154,8 @@ class TradePilotWorkflow:
                 product=state.product_profile,
                 evidence=evidence,
                 statistics=state.statistics_result,
+                user_constraints=state.user_constraints,
+                original_user_input={"target_market": state.target_market},
             )
         )
         return {

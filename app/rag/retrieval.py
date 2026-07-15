@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from app.core.enums import AgentStatus, KnowledgeType
 from app.rag.contracts import KnowledgeStore
+from app.rag.query_builder import build_product_queries, build_review_queries
 from app.schemas.common import DataGap
 from app.schemas.evidence import EvidenceReference, RetrievalResult
 from app.schemas.product import ProductProfile
@@ -15,25 +16,11 @@ class RetrievalConfig:
 
 
 def build_product_query(product: ProductProfile) -> str:
-    parts = [
-        product.name,
-        product.category,
-        product.description,
-        " ".join(product.features),
-        " ".join(product.use_scenarios),
-        product.target_market,
-    ]
-    return " ".join(part for part in parts if part).strip()
+    return build_product_queries(product).original_query
 
 
 def build_review_query(product: ProductProfile) -> str:
-    parts = [
-        product.name,
-        product.category,
-        product.target_market,
-        "customer reviews pain points benefits usage scenario complaints purchase motivation",
-    ]
-    return " ".join(part for part in parts if part).strip()
+    return build_review_queries(product).original_query
 
 
 def retrieve_for_product(

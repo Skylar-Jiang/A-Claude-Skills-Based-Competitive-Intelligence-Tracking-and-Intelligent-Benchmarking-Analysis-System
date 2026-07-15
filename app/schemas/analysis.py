@@ -21,15 +21,43 @@ class ScaffoldAgentOutput(BaseModel):
     conclusions: list[Conclusion] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
     data_gaps: list[DataGap] = Field(default_factory=list)
+    evidence_references: list[dict[str, Any]] = Field(default_factory=list)
+    missing_evidence_types: list[str] = Field(default_factory=list)
+    unverifiable_claims: list[str] = Field(default_factory=list)
+    statistics_result_ids: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
     scaffold_note: str = "Deterministic scaffold output; deferred business analysis is not implemented."
 
 
 class ProductMarketAnalysis(ScaffoldAgentOutput):
     product_summary: str = ""
+    product_category: str = ""
+    product_functions: list[str] = Field(default_factory=list)
+    key_parameters: list[str] = Field(default_factory=list)
+    usage_scenarios: list[str] = Field(default_factory=list)
+    target_users: list[str] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    competitor_differences: list[str] = Field(default_factory=list)
+    price_analysis: str | None = None
+    target_market_fit: str | None = None
+    optimization_suggestions: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
 
 
 class UserInsight(ScaffoldAgentOutput):
     insight_summary: str = ""
+    target_user_profiles: list[str] = Field(default_factory=list)
+    identity_or_demographic_observations: list[str] = Field(default_factory=list)
+    usage_scenarios: list[str] = Field(default_factory=list)
+    purchase_motivations: list[str] = Field(default_factory=list)
+    positive_concerns: list[str] = Field(default_factory=list)
+    frequent_keywords: list[str] = Field(default_factory=list)
+    pain_points: list[str] = Field(default_factory=list)
+    negative_review_reasons: list[str] = Field(default_factory=list)
+    user_expectations: list[str] = Field(default_factory=list)
+    improvement_suggestions: list[str] = Field(default_factory=list)
 
 
 class OperationPlan(ScaffoldAgentOutput):

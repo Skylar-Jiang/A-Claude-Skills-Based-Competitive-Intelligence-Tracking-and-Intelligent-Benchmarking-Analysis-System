@@ -10,21 +10,21 @@ flowchart LR
     S --> DB["Repository ports / SQLAlchemy / SQLite"]
     S --> G["LangGraph StateGraph"]
     G --> N["InputValidator -> ProductNormalizer"]
-    N --> ST["StatisticsProvider Stub"]
-    ST --> PM["ProductMarketAgent Stub"]
-    ST --> UI["UserInsightAgent Stub"]
-    PM --> OD["OperationsDecisionAgent Stub"]
+    N --> ST["StatisticsProvider"]
+    ST --> PM["ProductMarketAgent LCEL + RetrievalPipeline"]
+    ST --> UI["UserInsightAgent LCEL + RetrievalPipeline"]
+    PM --> OD["OperationsDecisionAgent"]
     UI --> OD
-    OD --> EA["EvidenceAuditAgent Stub"]
+    OD --> EA["EvidenceAuditAgent"]
     EA -->|"at most one retry"| OD
     EA --> PE["PersistAndExport"]
     PE --> DB
     PE --> R["Demo JSON / Markdown"]
 ```
 
-The two knowledge domains are `product_knowledge` and `review_insight`. Tests and smoke runs use an
-in-memory store. `ChromaKnowledgeStore` is a minimal adapter that requires an injected embedding
-function and never downloads a model itself.
+The two knowledge domains are `product_knowledge` and `review_insight`. Demo tests use an in-memory
+store. Real mode uses `ChromaKnowledgeStore` through the shared `RetrievalPipeline`, which owns query
+building, metadata filters, recall, deduplication, reranking, evidence binding, and sufficiency checks.
 
 The composition root injects a `KnowledgeStore` factory and a session-scoped `StatisticsProvider`
 factory. Domain seed entry points resolve a configured `DomainAdapter` through

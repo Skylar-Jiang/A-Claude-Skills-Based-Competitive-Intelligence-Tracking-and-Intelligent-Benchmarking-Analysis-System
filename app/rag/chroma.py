@@ -222,6 +222,62 @@ class ChromaKnowledgeStore:
             )
         return RetrievalResult(status=AgentStatus.SUCCEEDED, evidence=evidence)
 
+    def retrieve_raw(
+        self,
+        *,
+        query: str,
+        product_id: str,
+        knowledge_type: KnowledgeType,
+        top_k: int = 30,
+        filters: dict[str, object] | None = None,
+        fetch_k: int | None = None,
+        evidence_id_prefix: str = "",
+    ) -> list[EvidenceReference]:
+        collection = self._collection(knowledge_type)
+        collection_count = collection.count()
+        if collection_count == 0:
+            return []
+        where = filters or {"product_id": product_id}
+        n_results = min(fetch_k or top_k, collection_count)
+        result = collection.query(
+            query_texts=[query],
+            n_results=n_results,
+            where=where,
+            include=["documents", "metadatas", "distances"],
+        )
+        evidence = []
+        for evidence_id, excerpt, metadata, distance in zip(
+            result.get("ids", [[]])[0],
+            result.get("documents", [[]])[0],
+            result.get("metadatas", [[]])[0],
+            result.get("distances", [[]])[0],
+            strict=False,
+        ):
+            metadata = metadata or {}
+            score = max(0.0, 1.0 - float(distance or 0.0))
+            origin = DataOrigin(metadata["data_origin"])
+            evidence.append(
+                EvidenceReference(
+                    evidence_id=f"{evidence_id_prefix}{evidence_id}",
+                    evidence_type="chroma_document",
+                    knowledge_type=knowledge_type,
+                    source_name=str(metadata.get("source_name", "Chroma")),
+                    source_uri=str(metadata.get("source_uri") or "") or None,
+                    excerpt=(excerpt or "")[:1800],
+                    data_origin=origin,
+                    is_demo=origin is DataOrigin.DEMO,
+                    metadata={
+                        **metadata,
+                        "product_id": metadata.get("product_id", product_id),
+                        "collection": self.collection_names[knowledge_type],
+                        "retrieval_score": score,
+                        "vector_score": score,
+                        "query": query,
+                    },
+                )
+            )
+        return evidence
+
     def _fallback_query(
         self,
         collection,  # type: ignore[no-untyped-def]
