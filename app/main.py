@@ -29,7 +29,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):  # type: ignore[no-untyped-def]
-        for path in (resolved.upload_dir, resolved.report_dir, resolved.chroma_dir):
+        for path in (resolved.upload_dir, resolved.report_dir, resolved.chroma_dir, resolved.chroma_persist_dir):
             Path(path).mkdir(parents=True, exist_ok=True)
         upgrade_database(resolved.database_url)
         application.state.settings = resolved

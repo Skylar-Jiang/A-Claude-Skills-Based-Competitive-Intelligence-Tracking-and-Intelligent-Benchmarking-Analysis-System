@@ -62,7 +62,11 @@ class ProgressTracker:
 
 
 def _count_records(session: Session, model: type[object], *, extra_filters: tuple[object, ...] = ()) -> int:
-    statement = select(func.count()).select_from(model).where(model.data_origin == DataOrigin.REAL.value, *extra_filters)
+    statement = (
+        select(func.count())
+        .select_from(model)
+        .where(model.data_origin == DataOrigin.REAL.value, *extra_filters)
+    )
     return int(session.scalar(statement) or 0)
 
 

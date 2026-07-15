@@ -21,6 +21,9 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///data/tradepilot.db"
     chroma_dir: Path = Path("data/chroma")
+    chroma_persist_dir: Path = Path("data/chroma")
+    chroma_product_collection: str = "product_knowledge"
+    chroma_review_collection: str = "review_insight"
     upload_dir: Path = Path("data/uploads")
     report_dir: Path = Path("data/reports")
 
@@ -30,9 +33,20 @@ class Settings(BaseSettings):
     model_analysis: str | None = None
     model_report: str | None = None
     model_vision: str | None = None
+    model_temperature: float = 0.1
+    model_timeout_seconds: int = 120
+    model_max_retries: int = 3
 
     embedding_model: str | None = None
     embedding_device: str = "cpu"
+    rerank_model: str | None = None
+    rag_fetch_k: int = 30
+    rag_top_k: int = 8
+    rag_score_threshold: float = 0.0
+    rag_batch_size: int = 128
+    rag_chunk_size: int = 2800
+    rag_chunk_overlap: int = 300
+    rag_use_chroma: bool = False
     log_level: str = "INFO"
     default_data_mode: str = Field(default="demo")
 

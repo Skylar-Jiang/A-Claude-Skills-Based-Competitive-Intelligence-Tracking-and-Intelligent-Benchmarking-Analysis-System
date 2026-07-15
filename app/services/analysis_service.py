@@ -37,7 +37,8 @@ class AnalysisService:
         if payload.data_mode is DataMode.REAL:
             if not self.settings.real_model_configured:
                 raise LLMNotConfiguredError()
-            raise ScaffoldOnlyError()
+            if not self.settings.rag_use_chroma:
+                raise ScaffoldOnlyError("real")
         if payload.data_mode is DataMode.MOCK:
             raise ScaffoldOnlyError("mock")
         product = self.products.get(payload.product_id)

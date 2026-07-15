@@ -2,8 +2,8 @@ from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
-from app.statistics.providers.pet_supplies import PetSuppliesStatisticsProvider
 from app.statistics.contracts import StatisticsProvider
+from app.statistics.providers.pet_supplies import PetSuppliesStatisticsProvider
 
 StatisticsProviderFactory = Callable[[Session], StatisticsProvider]
 

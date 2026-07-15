@@ -19,6 +19,10 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"
+markers = [
+    "real_model: calls the configured external analysis model",
+    "real_data: uses real filtered data and Chroma indexes",
+]
 
 [tool.ruff]
 target-version = "py312"

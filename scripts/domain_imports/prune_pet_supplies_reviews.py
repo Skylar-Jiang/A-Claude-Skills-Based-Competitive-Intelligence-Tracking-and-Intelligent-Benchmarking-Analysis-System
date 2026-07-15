@@ -10,8 +10,8 @@ sys.path.insert(0, str(ROOT))
 from sqlalchemy import delete, select  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from app.core.enums import DataOrigin  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
+from app.core.enums import DataOrigin  # noqa: E402
 from app.db.migrations import upgrade_database  # noqa: E402
 from app.db.models.core import Product, Review  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
@@ -124,7 +124,9 @@ def prune_pet_supplies_reviews(session: Session, reviews_input_path: Path) -> Pr
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Prune pet supplies reviews that are absent from the latest filtered JSONL.")
+    parser = argparse.ArgumentParser(
+        description="Prune pet supplies reviews that are absent from the latest filtered JSONL."
+    )
     parser.add_argument(
         "--reviews-input",
         type=Path,

@@ -4,11 +4,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.enums import AgentStatus, DataOrigin
+from app.db.models.core import CompetitorOffer, KnowledgeSource, Product
 from app.schemas.common import DataGap
 from app.schemas.product import ProductProfile
 from app.statistics.contracts import StatisticsResult
 from app.statistics.stub import ScaffoldStatisticsProvider
-from app.db.models.core import CompetitorOffer, KnowledgeSource, Product
 
 PET_METADATA_SOURCE_FILE = "data/filtered/meta_pet_supplies_prefiltered.jsonl"
 

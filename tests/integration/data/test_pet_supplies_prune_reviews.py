@@ -28,8 +28,12 @@ def test_prune_pet_supplies_reviews_deletes_only_reviews_missing_from_latest_jso
         encoding="utf-8",
     )
 
-    keep_review_id = deterministic_id("review", "PET-PARENT-1", "ASIN-1", "USER-1", 1, "Keep me", "Still in the new filtered file.")
-    drop_review_id = deterministic_id("review", "PET-PARENT-1", "ASIN-2", "USER-2", 2, "Drop me", "Old full import residue.")
+    keep_review_id = deterministic_id(
+        "review", "PET-PARENT-1", "ASIN-1", "USER-1", 1, "Keep me", "Still in the new filtered file."
+    )
+    drop_review_id = deterministic_id(
+        "review", "PET-PARENT-1", "ASIN-2", "USER-2", 2, "Drop me", "Old full import residue."
+    )
 
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
