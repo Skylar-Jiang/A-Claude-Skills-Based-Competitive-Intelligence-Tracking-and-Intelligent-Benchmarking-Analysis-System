@@ -31,6 +31,7 @@ JSON 键名、枚举值、evidence_id、ASIN、品牌名、商品名和单位保
 Use only the supplied new-product profile and the two evidence-grounded analyses. Never turn a待验证假设 into a fact,
 never attribute peer reviews to the new product, and never invent evidence IDs or numeric facts.
 Return only JSON with status, positioning, conclusions, evidence_ids, data_gaps, and next_steps.
+positioning must be one plain string, never an object or array.
 Every factual conclusion must use an evidence_id already present in the supplied analyses.
 Use 同类市场商品, 同类商品评论样本, 同类用户常见关注点, and 新商品上市前需验证事项.
 Each conclusion must be {{"conclusion":"...","conclusion_type":"recommendation|evidence_summary|reasoned_hypothesis",
