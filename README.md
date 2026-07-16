@@ -73,6 +73,20 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 Health: `GET http://127.0.0.1:8000/api/v1/health`. Swagger: `/docs`.
 
+## Frontend
+
+The React + TypeScript operations dashboard lives in `frontend`. Start the API first, then run:
+
+```powershell
+Set-Location frontend
+npm install
+npm run dev
+```
+
+Vite serves the dashboard at `http://127.0.0.1:5173` and proxies `/api/v1` to the local API. The UI covers product
+creation, optional file upload, four-Agent progress, timeline, audit results, and structured/Markdown reports. See
+`frontend/README.md` and `docs/frontend-implementation.md` for the design and integration details.
+
 Create a `data_mode=real` product with its name, description, features, parameters, scenarios, target species/users,
 target price, and optional uploaded image. `POST /api/v1/analysis-runs` returns `202` immediately; poll `/status` or
 consume the persisted `/events` SSE stream, which supports `Last-Event-ID` replay. Timeline, Agent outputs, peers,
