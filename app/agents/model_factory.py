@@ -44,8 +44,22 @@ def create_analysis_model(settings: Settings | None = None) -> BaseChatModel:
         max_retries=resolved.model_max_retries,
         max_tokens=resolved.model_max_tokens,
         model_kwargs={"response_format": {"type": "json_object"}},
-        extra_body={"thinking": {"type": "disabled"}} if resolved.deepseek_api_key else None,
+        extra_body=_analysis_extra_body(resolved),
     )
+
+
+def _analysis_extra_body(settings: Settings) -> dict[str, Any] | None:
+    """Keep bounded JSON responses free of provider reasoning content."""
+    if settings.deepseek_api_key:
+        return {"thinking": {"type": "disabled"}}
+    base_url = (settings.openai_base_url or "").lower()
+    model_name = (settings.model_analysis or "").lower()
+    if (
+        ("api.minimax.io" in base_url or "api.minimaxi.com" in base_url)
+        and model_name.startswith("minimax-m3")
+    ):
+        return {"thinking": {"type": "disabled"}}
+    return None
 
 
 def create_operations_model(settings: Settings | None = None) -> BaseChatModel:
