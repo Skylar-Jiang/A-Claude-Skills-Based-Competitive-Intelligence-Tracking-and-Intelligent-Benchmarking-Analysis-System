@@ -20,6 +20,7 @@ import {
   XCircle,
 } from '@phosphor-icons/react'
 import ReactMarkdown from 'react-markdown'
+import { SearchableCombobox } from './SearchableCombobox'
 import {
   api,
   type AgentView,
@@ -30,6 +31,7 @@ import {
   type RunStatus,
   type WorkflowMetadata,
 } from './api'
+import { productCategoryOptions, targetMarketOptions } from './catalogOptions'
 
 type FormState = {
   name: string
@@ -436,14 +438,17 @@ function App() {
                     onChange={(event) => setForm({ ...form, name: event.target.value })}
                   />
                 </label>
-                <label>
-                  <span>商品类别 <b>*</b></span>
-                  <input
-                    required
-                    value={form.category}
-                    onChange={(event) => setForm({ ...form, category: event.target.value })}
-                  />
-                </label>
+                <SearchableCombobox
+                  id="product-category"
+                  label="商品类别"
+                  required
+                  value={form.category}
+                  options={productCategoryOptions}
+                  placeholder="搜索或输入商品类别"
+                  helperText="从常用品类中选择，或直接输入自定义类别"
+                  icon={<Package weight="duotone" />}
+                  onChange={(category) => setForm((current) => ({ ...current, category }))}
+                />
               </div>
 
               <label className="full-field">
@@ -466,16 +471,16 @@ function App() {
               </label>
 
               <div className="field-grid two-columns">
-                <label>
-                  <span>目标市场</span>
-                  <div className="input-with-icon">
-                    <Globe aria-hidden="true" />
-                    <input
-                      value={form.targetMarket}
-                      onChange={(event) => setForm({ ...form, targetMarket: event.target.value })}
-                    />
-                  </div>
-                </label>
+                <SearchableCombobox
+                  id="target-market"
+                  label="目标市场"
+                  value={form.targetMarket}
+                  options={targetMarketOptions}
+                  placeholder="搜索国家、地区或市场"
+                  helperText="支持中文、英文、国家缩写和自定义市场"
+                  icon={<Globe weight="duotone" />}
+                  onChange={(targetMarket) => setForm((current) => ({ ...current, targetMarket }))}
+                />
                 <label>
                   <span>目标售价</span>
                   <div className="price-field">

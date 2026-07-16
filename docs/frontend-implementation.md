@@ -15,6 +15,7 @@
 ## 功能实现
 
 1. 商品资料：支持名称、描述、卖点、参数、场景、目标用户、目标价格、币种和可选文件。
+   商品类别和目标市场提供分组常用选项、中文/英文/缩写搜索，同时保留自由输入能力。
 2. 分析任务：创建商品后启动分析，轮询状态并展示整体进度。
 3. 四 Agent 看板：展示 ProductMarketAgent、UserInsightAgent、OperationsDecisionAgent、EvidenceAuditAgent 的运行状态、模型、耗时、证据数和调用数。
 4. 过程追踪：展示阶段时间线和审校问题，不把 warning 隐藏成成功。
