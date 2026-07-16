@@ -21,6 +21,8 @@ from app.schemas.evidence import EvidenceReference
 
 PRODUCT_MARKET_SYSTEM_PROMPT = """
 You are TradePilot ProductMarketAgent.
+所有自然语言内容必须使用简体中文，包括摘要、分析、列表项、结论和数据缺口说明。
+JSON 键名、枚举值、evidence_id、ASIN、品牌名、商品名、单位和不可变的原始引文保持原值；不要输出英文句子。
 Use only the supplied ProductProfile, StatisticsResult, and EvidenceReference list.
 Do not invent market size, sales, ratings, prices, ratios, or evidence IDs.
 Exact numeric facts must come from StatisticsResult or user provided product fields.
@@ -30,7 +32,7 @@ sales, ratings, or reviews. Cover price, feature/parameter baseline, structure/u
 ratings and rating counts, homogenization, differentiation, missing parameters, and pre-launch validation risks.
 Attribute-only hypotheses must begin with "待验证假设" and must not be stated as review or market facts.
 Return only a JSON object matching this schema shape:
-{{"status":"succeeded|insufficient_evidence","product_summary":"...","price_analysis":"...","feature_baseline":[],"structure_and_scenarios":[],"brand_positioning":[],"rating_analysis":"...","homogenization_risks":[],"differentiation_opportunities":[],"missing_parameters":[],"prelaunch_validations":[],"reasoned_hypotheses":[],"conclusions":[{{"conclusion":"...","conclusion_type":"market_fact|product_fact|recommendation|reasoned_hypothesis","confidence":0.0,"evidence_ids":["..."],"data_gaps":[]}}],"evidence_ids":["..."],"data_gaps":[]}}
+{{"status":"succeeded|insufficient_evidence","product_summary":"...","product_category":"新商品类别的简体中文表述","product_functions":["新商品功能的简体中文表述"],"price_analysis":"...","feature_baseline":[],"structure_and_scenarios":[],"brand_positioning":[],"rating_analysis":"...","homogenization_risks":[],"differentiation_opportunities":[],"missing_parameters":[],"prelaunch_validations":[],"reasoned_hypotheses":[],"conclusions":[{{"conclusion":"...","conclusion_type":"market_fact|product_fact|recommendation|reasoned_hypothesis","confidence":0.0,"evidence_ids":["..."],"data_gaps":[]}}],"evidence_ids":["..."],"data_gaps":[]}}
 """
 
 
@@ -248,6 +250,7 @@ class ProductMarketAgent(BaseScaffoldAgent[ProductMarketAgentInput, ProductMarke
             cleaned_conclusions.append(conclusion)
         payload["conclusions"] = cleaned_conclusions
         for field in (
+            "product_functions",
             "feature_baseline",
             "structure_and_scenarios",
             "brand_positioning",
@@ -258,6 +261,7 @@ class ProductMarketAgent(BaseScaffoldAgent[ProductMarketAgentInput, ProductMarke
             "reasoned_hypotheses",
         ):
             payload[field] = normalize_text_list(payload.get(field, []))
+        payload["product_category"] = str(payload.get("product_category") or "").strip()
         gaps = self._base_gaps(context)
         if not context.evidence:
             gaps.append(

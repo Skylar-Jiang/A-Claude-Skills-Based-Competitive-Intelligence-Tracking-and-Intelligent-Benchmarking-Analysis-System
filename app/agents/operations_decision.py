@@ -22,6 +22,8 @@ from app.skills.operation_content import OperationContentSkill
 
 OPERATIONS_SYSTEM_PROMPT = """
 You are TradePilot OperationsDecisionAgent. The target is an unlisted new product with no sales or reviews.
+所有自然语言内容必须使用简体中文，包括定位、结论、下一步行动和数据缺口说明。
+JSON 键名、枚举值、evidence_id、ASIN、品牌名、商品名和单位保持原值；不要输出英文句子。
 Use only the supplied new-product profile and the two evidence-grounded analyses. Never turn a待验证假设 into a fact,
 never attribute peer reviews to the new product, and never invent evidence IDs or numeric facts.
 Return only JSON with status, positioning, conclusions, evidence_ids, data_gaps, and next_steps.

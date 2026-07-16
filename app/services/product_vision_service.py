@@ -17,6 +17,7 @@ from app.schemas.vision import ProductVisionAnalysis
 VISION_PROMPT = """
 Analyze this user-uploaded image of an unlisted pet product. Return one JSON object containing summary,
 visible_product_type, visible_materials, visible_structure, visible_features, usage_clues, and uncertainties.
+所有自然语言内容必须使用简体中文；JSON 键名、品牌名、商品名和单位保持原值，不要输出英文句子。
 Describe only visible attributes. Do not invent price, rating, sales, reviews, performance, material, or compatibility.
 If an attribute cannot be verified visually, put it in uncertainties.
 """

@@ -16,6 +16,19 @@ from app.workflows.state import TradePilotState
 
 
 class ReportExporter:
+    REAL_GAP_FIELD_TITLES = {
+        "peer_product_market": "同类市场商品",
+        "peer_review_sample": "同类商品评论样本",
+        "product_specifications": "商品参数",
+        "product_features": "商品功能",
+        "product_knowledge": "商品资料",
+        "review_insight": "评论样本",
+        "statistics": "统计数据",
+        "peer_group": "同类商品组",
+        "competitor_offers": "同类商品报价",
+        "operation_plan": "运营决策",
+        "evidence_ids": "证据引用",
+    }
     SECTION_TITLES = {
         "executive_summary": "Executive summary",
         "product_profile": "Product profile",
@@ -102,6 +115,11 @@ class ReportExporter:
             raise ValueError("audit result is required before report export")
         content = self.content_skill.extract(plan.next_steps) if plan else None
         limitations = self._collect_gaps(state)
+        rendered_limitations = (
+            [self._real_gap(gap) for gap in limitations]
+            if audit.data_origin is not DataOrigin.DEMO
+            else [gap.model_dump(mode="json") for gap in limitations]
+        )
         actions = (
             [step.removeprefix("ACTION: ") for step in plan.next_steps if step.startswith("ACTION: ")]
             if plan
@@ -136,7 +154,7 @@ class ReportExporter:
             "operation_plan": self._dump(plan),
             "content_playbook": content.as_dict() if content else None,
             "audit_result": audit.model_dump(mode="json"),
-            "data_limitations": [gap.model_dump(mode="json") for gap in limitations],
+            "data_limitations": rendered_limitations,
             "evidence_index": evidence_index,
             "next_actions": actions,
             "new_product_overview": {
@@ -151,16 +169,32 @@ class ReportExporter:
             "data_supported_conclusions": self._data_supported_conclusions(state),
             "reasoned_hypotheses": self._reasoned_hypotheses(state),
             "data_limitations_and_evidence_index": {
-                "limitations": [gap.model_dump(mode="json") for gap in limitations],
+                "limitations": rendered_limitations,
                 "match_limitations": state.match_limitations,
                 "review_sample_scope": state.review_sample_scope,
                 "evidence_index": evidence_index,
             },
         }
 
+    @classmethod
+    def _real_gap(cls, gap: DataGap) -> dict[str, str | None]:
+        reason = gap.reason.strip()
+        if not any("\u4e00" <= character <= "\u9fff" for character in reason):
+            reason = "缺少形成可靠结论所需的数据或证据。"
+        return {
+            "code": gap.code,
+            "field": cls.REAL_GAP_FIELD_TITLES.get(gap.field, "相关数据"),
+            "reason": reason,
+            "required_for": "形成更可靠的结论" if gap.required_for else None,
+        }
+
     @staticmethod
     def _feature_concern_mapping(state: TradePilotState) -> list[dict[str, str]]:
-        features = state.product_profile.features
+        features = (
+            state.product_market_analysis.product_functions
+            if state.product_market_analysis and state.product_market_analysis.product_functions
+            else state.product_profile.features
+        )
         insight = state.user_insight
         concerns = (
             [*insight.common_needs, *insight.pain_points, *insight.feature_usage_maintenance_concerns]
@@ -366,7 +400,7 @@ class ReportExporter:
             "## 新商品概况",
             "",
             f"- 商品名称：{product.get('name', '')}",
-            f"- 商品类别：{product.get('category', '')}",
+            f"- 商品类别：{market.get('product_category') or product.get('category', '')}",
             f"- 同类组：`{overview.get('peer_group_id') or '未形成'}`",
             "- 本商品为待上市新商品，不包含自身销量、评分或评论。",
             "",

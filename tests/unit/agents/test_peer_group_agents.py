@@ -6,10 +6,10 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
 from app.agents.contracts import EvidenceAuditAgentInput
-from app.agents.evidence_audit import EvidenceAuditAgent
-from app.agents.operations_decision import OperationsDecisionAgent
-from app.agents.product_market import ProductMarketAgent
-from app.agents.user_insight import UserInsightAgent
+from app.agents.evidence_audit import AUDIT_SYSTEM_PROMPT, EvidenceAuditAgent
+from app.agents.operations_decision import OPERATIONS_SYSTEM_PROMPT, OperationsDecisionAgent
+from app.agents.product_market import PRODUCT_MARKET_SYSTEM_PROMPT, ProductMarketAgent
+from app.agents.user_insight import USER_INSIGHT_SYSTEM_PROMPT, UserInsightAgent
 from app.core.enums import (
     AgentStatus,
     AuditStatus,
@@ -62,6 +62,15 @@ def _model(name: str, payload: dict[str, object], calls: Counter[str]) -> Runnab
         return AIMessage(content=json.dumps(payload, ensure_ascii=False))
 
     return RunnableLambda(invoke)
+
+
+def test_real_agent_prompts_require_simplified_chinese_narrative() -> None:
+    requirement = "所有自然语言内容必须使用简体中文"
+
+    assert requirement in PRODUCT_MARKET_SYSTEM_PROMPT
+    assert requirement in USER_INSIGHT_SYSTEM_PROMPT
+    assert requirement in OPERATIONS_SYSTEM_PROMPT
+    assert requirement in AUDIT_SYSTEM_PROMPT
 
 
 def test_audit_discards_model_missing_id_claim_refuted_by_supplied_evidence() -> None:

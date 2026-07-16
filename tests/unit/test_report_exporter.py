@@ -6,7 +6,7 @@ from app.agents.evidence_audit import EvidenceAuditAgent
 from app.agents.operations_decision import OperationsDecisionAgent
 from app.core.enums import AgentStatus, AuditStatus, DataMode, DataOrigin, ImplementationStatus, KnowledgeType
 from app.schemas.analysis import AuditResult, OperationPlan, ProductMarketAnalysis, UserInsight
-from app.schemas.common import Conclusion
+from app.schemas.common import Conclusion, DataGap
 from app.schemas.evidence import EvidenceReference
 from app.schemas.product import ProductCreate, ProductProfile
 from app.schemas.report import DEMO_DISCLAIMER
@@ -123,11 +123,21 @@ def test_real_report_uses_unlisted_product_peer_group_sections_without_scaffold_
             ),
             "peer_group_id": "peer-group-1",
             "selected_parent_asins": ["PEER-1"],
+            "data_gaps": [
+                DataGap(
+                    code="model_reported_data_gap",
+                    field="product_specifications",
+                    reason="Waste drawer capacity is unspecified.",
+                    required_for="market analysis",
+                )
+            ],
             "product_market_analysis": ProductMarketAnalysis(
                 status=AgentStatus.SUCCEEDED,
                 data_origin=DataOrigin.USER,
                 implementation_status=ImplementationStatus.PRODUCTION,
                 product_summary="待上市新商品与同类市场商品比较。",
+                product_category="宠物饮水机",
+                product_functions=["紧凑收纳"],
                 price_analysis="同类市场价格来自 SQL。",
                 feature_baseline=["循环供水"],
                 prelaunch_validations=["验证运行噪音"],
@@ -191,6 +201,12 @@ def test_real_report_uses_unlisted_product_peer_group_sections_without_scaffold_
     assert "DEMO" not in markdown
     assert "Scaffold" not in markdown
     assert "当前商品反馈" not in markdown
+    assert "- 商品类别：宠物饮水机" in markdown
+    assert "compact storage" not in markdown
+    assert "紧凑收纳 ↔ 便于清洗" in markdown
+    assert "product_specifications" not in markdown
+    assert "Waste drawer capacity is unspecified." not in markdown
+    assert "商品参数：缺少形成可靠结论所需的数据或证据。" in markdown
     assert report.section_index["new_product_overview"].section_id == "new-product-overview"
     assert '<a id="new-product-overview"></a>' in markdown
     assert '<a id="peer-market-product-analysis"></a>' in markdown

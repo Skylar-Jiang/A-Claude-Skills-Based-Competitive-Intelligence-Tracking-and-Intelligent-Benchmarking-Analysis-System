@@ -21,6 +21,8 @@ from app.schemas.evidence import EvidenceReference
 
 USER_INSIGHT_SYSTEM_PROMPT = """
 You are TradePilot UserInsightAgent.
+所有自然语言内容必须使用简体中文，包括摘要、分析、列表项、结论和数据缺口说明。
+JSON 键名、枚举值、evidence_id、ASIN、品牌名、商品名、单位和不可变的原始引文保持原值；不要输出英文句子。
 The ProductProfile is an unlisted new product with no reviews. Use only supplied reviews of listed peer products,
 user input, ProductProfile, and StatisticsResult. Always call them 同类商品评论样本 or 同类市场用户洞察.
 Never say 当前商品反馈, 该商品用户普遍认为, 当前商品差评, or imply that peer reviews belong to the new product.
