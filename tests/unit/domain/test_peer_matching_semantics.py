@@ -35,6 +35,20 @@ class TerminalProductEmbedding:
         return "terminal-product-embedding-v1"
 
 
+class CrossLingualHarnessEmbedding:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [
+            [1.0, 0.0]
+            if "harness" in text.casefold() or "胸背带" in text
+            else [0.0, 1.0]
+            for text in texts
+        ]
+
+    @staticmethod
+    def name() -> str:
+        return "cross-lingual-harness-test-v1"
+
+
 def _candidate(product_id: str = "candidate-a") -> ProductProfile:
     return ProductProfile(
         product_id=product_id,
@@ -48,6 +62,23 @@ def _candidate(product_id: str = "candidate-a") -> ProductProfile:
             use_scenarios=["indoor cat hydration"],
             target_audience=["cat owners"],
             target_price=Decimal("39.99"),
+            data_mode=DataMode.REAL,
+        ).model_dump(),
+    )
+
+
+def _chinese_harness_candidate() -> ProductProfile:
+    return ProductProfile(
+        product_id="candidate-zh-harness",
+        data_origin=DataOrigin.USER,
+        **ProductCreate(
+            name="轻量反光防挣脱犬用胸背带",
+            category="犬用胸背带",
+            description="适合城市遛犬和夜间出行。",
+            features=["反光织带", "四点调节", "前后双牵引环", "透气网布"],
+            use_scenarios=["日常遛犬", "夜间出行"],
+            target_audience=["中小型犬主人"],
+            target_price=Decimal("29.99"),
             data_mode=DataMode.REAL,
         ).model_dump(),
     )
@@ -176,6 +207,38 @@ def test_different_category_text_can_recall_and_match_same_terminal_product(tmp_
 
     assert [item.parent_asin for item in recalled] == ["PEER-DISPENSER"]
     assert [item.parent_asin for item in result.peers] == ["PEER-DISPENSER"]
+
+
+def test_chinese_harness_input_recalls_and_matches_english_harness_catalog(tmp_path: Path) -> None:
+    peers = [
+        CatalogProduct(
+            parent_asin=f"HARNESS-{index:02d}",
+            title=f"Reflective No Pull Dog Harness Model {index}",
+            description="Adjustable escape proof walking harness for dogs.",
+            features=["reflective webbing", "front leash clip", "breathable mesh"],
+            details={"Target Species": "Dog"},
+            categories=["Pet Supplies", "Dogs", "Harnesses"],
+            main_category="Pet Supplies",
+            target_species=["dog"],
+            price=Decimal("29.99"),
+            average_rating=4.4,
+            rating_number=500 + index,
+            source_line=index + 1,
+        )
+        for index in range(12)
+    ]
+    source = tmp_path / "metadata.jsonl"
+    _write_catalog(source, peers)
+    catalog = ProductCatalog.build(source, tmp_path / "catalog.sqlite")
+    signature = CandidateProductSignature.from_product(_chinese_harness_candidate())
+
+    recalled = list(catalog.iter_candidates(signature))
+    result = PeerMatcher(CrossLingualHarnessEmbedding(), _config()).match(signature, recalled)
+
+    assert signature.target_species == ["dog"]
+    assert len(recalled) == 12
+    assert result.prefilter_count == 12
+    assert len(result.peers) == 10
 
 
 def test_same_main_category_does_not_define_peer_relationship() -> None:

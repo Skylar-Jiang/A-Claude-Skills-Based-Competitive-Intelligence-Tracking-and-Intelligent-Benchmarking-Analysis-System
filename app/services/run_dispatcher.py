@@ -84,7 +84,32 @@ class RunDispatcher:
                     if isinstance(persisted_error, dict)
                     else self._serialize_error(exc)
                 )
-                if run.current_node == "created":
+                running_stage = next(
+                    (
+                        stage
+                        for stage in repository.list_stages(run_id)
+                        if stage.status is RunStageStatus.RUNNING
+                    ),
+                    None,
+                )
+                failed_stage_key = running_stage.stage_key if running_stage is not None else None
+                if failed_stage_key is not None:
+                    try:
+                        repository.transition_stage(
+                            run_id,
+                            failed_stage_key,
+                            RunStageStatus.FAILED,
+                            error=error,
+                        )
+                        repository.append_event(
+                            run_id,
+                            event_type="stage_failed",
+                            stage_key=failed_stage_key,
+                            payload={"status": RunStageStatus.FAILED.value, "error_type": error.get("type")},
+                        )
+                    except Exception:
+                        session.rollback()
+                elif run.current_node == "created":
                     try:
                         repository.transition_stage(
                             run_id,

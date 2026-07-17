@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import Settings
-from app.core.enums import DataMode, DataOrigin
+from app.core.enums import DataMode, DataOrigin, RunStageStatus
 from app.core.exceptions import LLMNotConfiguredError
 from app.db.migrations import upgrade_database
 from app.db.models.core import Product
@@ -107,6 +107,39 @@ def test_background_failure_is_persisted_without_demo_or_mock_fallback(
         assert run["current_node"] == "workflow_failed"
         assert run["state"]["error"]["type"] == "RuntimeError"
         assert run["state"]["fallback_used"] is False
+
+
+def test_background_failure_marks_the_running_stage_failed(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    def fail_during_peer_matching(self, run_id):  # type: ignore[no-untyped-def]
+        self._stage(run_id, "peer_matching", RunStageStatus.RUNNING)
+        raise ValueError("controlled peer matching failure")
+
+    monkeypatch.setattr(
+        "app.services.analysis_service.AnalysisService.execute",
+        fail_during_peer_matching,
+    )
+    with TestClient(create_app(_settings(tmp_path))) as client:
+        product = client.post(
+            "/api/v1/products",
+            json={"name": "Stage failure", "category": "demo", "data_mode": "demo"},
+        ).json()["data"]
+        response = client.post(
+            "/api/v1/analysis-runs",
+            json={"product_id": product["product_id"], "data_mode": "demo"},
+        )
+        run_id = response.json()["data"]["run_id"]
+        for _ in range(200):
+            run = client.get(f"/api/v1/analysis-runs/{run_id}").json()["data"]
+            if run["status"] == "failed":
+                break
+            time.sleep(0.01)
+        timeline = client.get(f"/api/v1/analysis-runs/{run_id}/timeline").json()["data"]
+
+    peer_stage = next(item for item in timeline["stages"] if item["stage_key"] == "peer_matching")
+    assert peer_stage["status"] == "failed"
+    assert peer_stage["error"]["message"] == "controlled peer matching failure"
 
 
 def test_background_dispatcher_creates_a_worker_owned_knowledge_store(

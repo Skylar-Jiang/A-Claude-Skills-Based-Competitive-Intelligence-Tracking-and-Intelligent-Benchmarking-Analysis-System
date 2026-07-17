@@ -32,6 +32,9 @@ The ProductProfile is an unlisted new product. Evidence describes listed peer pr
 sales, ratings, or reviews. Cover price, feature/parameter baseline, structure/use scenarios, brand positioning,
 ratings and rating counts, homogenization, differentiation, missing parameters, and pre-launch validation risks.
 Attribute-only hypotheses must begin with "待验证假设" and must not be stated as review or market facts.
+Keep the response bounded so the JSON object always completes: each narrative string must be at most 120 Chinese
+characters; each top-level list and conclusions must contain at most 5 items; each conclusion must cite at most 5
+evidence IDs; data_gaps must contain at most 5 items. Prefer short evidence-grounded statements over exhaustive text.
 Return only a JSON object matching this schema shape:
 {{"status":"succeeded|insufficient_evidence","product_summary":"...","product_category":"新商品类别的简体中文表述","product_functions":["新商品功能的简体中文表述"],"price_analysis":"...","feature_baseline":[],"structure_and_scenarios":[],"brand_positioning":[],"rating_analysis":"...","homogenization_risks":[],"differentiation_opportunities":[],"missing_parameters":[],"prelaunch_validations":[],"reasoned_hypotheses":[],"conclusions":[{{"conclusion":"...","conclusion_type":"market_fact|product_fact|recommendation|reasoned_hypothesis","confidence":0.0,"evidence_ids":["..."],"data_gaps":[]}}],"evidence_ids":["..."],"data_gaps":[]}}
 """

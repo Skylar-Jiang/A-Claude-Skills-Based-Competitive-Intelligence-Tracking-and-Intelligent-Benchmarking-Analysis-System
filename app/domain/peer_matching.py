@@ -31,6 +31,30 @@ GENERIC_TOKENS = {
     "with",
 }
 
+# Candidate products can be written in Chinese while the prepared marketplace
+# catalog is English. Keep the deterministic prefilter explainable by expanding
+# a small, domain-owned vocabulary before FTS recall and rule scoring. Semantic
+# embeddings still make the final decision; these aliases only make valid peers
+# reachable without weakening accessory or similarity thresholds.
+DOMAIN_TOKEN_ALIASES: dict[str, set[str]] = {
+    "犬用胸背带": {"dog", "harness"},
+    "狗胸背": {"dog", "harness"},
+    "胸背带": {"harness"},
+    "防挣脱": {"escape", "proof"},
+    "反光": {"reflective"},
+    "织带": {"webbing"},
+    "调节": {"adjustable", "adjustment"},
+    "牵引环": {"leash", "clip", "ring"},
+    "牵引": {"leash", "walking"},
+    "透气": {"breathable"},
+    "网布": {"mesh"},
+    "遛犬": {"dog", "walking"},
+    "夜间": {"night"},
+    "犬": {"dog"},
+    "狗": {"dog"},
+    "猫": {"cat"},
+}
+
 
 class CandidateProductSignature(BaseModel):
     product_id: str
@@ -315,12 +339,30 @@ def rule_prefilter(
 def _target_species(parameters: dict[str, Any], target_audience: list[str]) -> list[str]:
     raw = parameters.get("Target Species") or parameters.get("target_species") or ""
     values = re.split(r"[,;/]", str(raw)) if raw else []
-    values.extend(item for item in target_audience if any(token in item.casefold() for token in ("cat", "dog")))
+    for item in target_audience:
+        normalized = item.casefold()
+        if "cat" in normalized or "猫" in item:
+            values.append("cat")
+        if "dog" in normalized or "犬" in item or "狗" in item:
+            values.append("dog")
     return list(dict.fromkeys(value.strip().casefold() for value in values if value.strip()))
 
 
+def matching_tokens(text: str) -> set[str]:
+    normalized = text.casefold()
+    tokens = {
+        token.casefold()
+        for token in TOKEN_PATTERN.findall(normalized)
+        if token.casefold() not in GENERIC_TOKENS
+    }
+    for phrase, aliases in DOMAIN_TOKEN_ALIASES.items():
+        if phrase in normalized:
+            tokens.update(aliases)
+    return tokens
+
+
 def _tokens(text: str) -> set[str]:
-    return {token.casefold() for token in TOKEN_PATTERN.findall(text) if token.casefold() not in GENERIC_TOKENS}
+    return matching_tokens(text)
 
 
 def _is_accessory(product: CatalogProduct, terms: list[str]) -> bool:

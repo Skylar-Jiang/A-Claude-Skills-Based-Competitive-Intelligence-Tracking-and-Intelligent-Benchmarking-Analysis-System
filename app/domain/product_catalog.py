@@ -14,9 +14,9 @@ from typing import Any
 from app.core.exceptions import DataPreparationRequiredError
 from app.domain.peer_matching import (
     GENERIC_TOKENS,
-    TOKEN_PATTERN,
     CandidateProductSignature,
     CatalogProduct,
+    matching_tokens,
 )
 
 CATALOG_SCHEMA_VERSION = 2
@@ -121,9 +121,9 @@ class ProductCatalog:
         candidate_limit: int = 1200,
     ) -> Iterator[CatalogProduct]:
         tokens = {
-            token.casefold()
-            for token in TOKEN_PATTERN.findall(signature.matching_text())
-            if token.casefold() not in GENERIC_TOKENS and len(token) > 1
+            token
+            for token in matching_tokens(signature.matching_text())
+            if token not in GENERIC_TOKENS and len(token) > 1
         }
         with closing(sqlite3.connect(self.cache_path)) as connection:
             connection.row_factory = sqlite3.Row
