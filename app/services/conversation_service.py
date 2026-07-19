@@ -64,6 +64,16 @@ class ConversationService:
         self.session.commit()
         return record
 
+    def update_metadata(self, session_id: str, updates: dict[str, object]) -> dict[str, object]:
+        conversation = self.session.get(Conversation, session_id)
+        if conversation is None:
+            raise ResourceNotFoundError("conversation", session_id)
+        metadata = dict(conversation.metadata_json or {})
+        metadata.update(updates)
+        conversation.metadata_json = metadata
+        self.session.commit()
+        return metadata
+
     def get(self, session_id: str) -> dict[str, object]:
         conversation = self.session.get(Conversation, session_id)
         if conversation is None:

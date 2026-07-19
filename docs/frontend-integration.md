@@ -22,6 +22,18 @@ and never silently returns Demo or Mock output. On success, fetch:
 - `/metadata` for matching, RAG, SQL, parallel-overlap and workflow timings;
 - `/reports/{report_id}`, `/markdown`, and `/json` for presentation or export.
 
+For report follow-up interaction, prefer the customer-service API instead of orchestrating `feedback`, `support`, and
+`conversation` routes directly:
+
+- `POST /api/v1/reports/{report_id}/customer-service/messages`
+  - Send one user message plus an optional `conversation_id`
+  - Optional `personality` values are fixed to `simple`, `professional`, `companion`, and `innovative`
+  - The backend returns `intent`, `affected_modules`, `action_taken`, `reply`, the latest `report_id` and
+    `report_version`, `changed_section_ids`, `change_summary`, and any `pending_questions`
+- `GET /api/v1/reports/{report_id}/customer-service/conversations/{conversation_id}`
+  - Read stored multi-turn conversation details, confirmed requirements, pending clarification items, and the latest
+    report version produced by the customer-service flow
+
 All JSON routes except the raw Markdown/JSON download routes use the common `success/data/meta/error` envelope.
 Treat `product_id` as the uploaded candidate record ID and `peer_group_id` as the stable candidate/data/config/result
 analysis-group ID; they are intentionally different. Peer reviews must always be labelled as peer-market samples.

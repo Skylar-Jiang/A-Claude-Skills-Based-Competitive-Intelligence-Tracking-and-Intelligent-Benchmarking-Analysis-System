@@ -18,3 +18,9 @@ messages in chronological order with support metadata.
 Guardrails intentionally permit only bounded report assistance. They do not allow unsupported market facts, invented
 policy/tax/platform claims, new-product review attribution, evidence-ID fabrication, or arbitrary whole-report
 rewrites. The original evidence audit remains visible on every derived version.
+
+The customer-service flow builds on top of these guardrails rather than replacing them. `POST
+/api/v1/reports/{report_id}/customer-service/messages` is the frontend-facing conversational entry point: it stores the
+dialogue, keeps the selected reply personality, and routes the request to explain, localized edit, clarification, or
+targeted incremental regeneration. Frontend clients should generally use the customer-service route for report follow-up
+and reserve `/support` for admin or low-level tooling.

@@ -79,3 +79,32 @@ class ErrorCode(StrEnum):
     STRUCTURED_OUTPUT_INVALID = "structured_output_invalid"
     DEMO_DATA_NOT_ALLOWED = "demo_data_not_allowed"
     DATA_PREPARATION_REQUIRED = "data_preparation_required"
+
+
+class CustomerServicePersonality(StrEnum):
+    SIMPLE = "simple"
+    PROFESSIONAL = "professional"
+    COMPANION = "companion"
+    INNOVATIVE = "innovative"
+
+
+class CustomerServiceIntent(StrEnum):
+    EXPLAIN = "explain"
+    LOCALIZED_EDIT = "localized_edit"
+    MODIFY_STRATEGY = "modify_strategy"
+    MODIFY_POSITIONING = "modify_positioning"
+    MODIFY_MARKETING_COPY = "modify_marketing_copy"
+    MODIFY_PROMOTION_STRATEGY = "modify_promotion_strategy"
+    CLARIFICATION_REQUIRED = "clarification_required"
+    REJECT = "reject"
+
+
+class CustomerServiceAction(StrEnum):
+    EXPLAIN = "explain"
+    LOCALIZED_EDIT = "localized_edit"
+    TARGETED_REGENERATION = "targeted_regeneration"
+    POSITIONING_EDIT = "positioning_edit"
+    MARKETING_COPY_EDIT = "marketing_copy_edit"
+    PROMOTION_STRATEGY_EDIT = "promotion_strategy_edit"
+    CLARIFICATION_REQUIRED = "clarification_required"
+    REJECT = "reject"

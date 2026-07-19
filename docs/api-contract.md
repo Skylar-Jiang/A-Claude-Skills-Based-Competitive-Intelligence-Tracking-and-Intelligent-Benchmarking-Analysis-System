@@ -9,7 +9,7 @@ Formal endpoints use `/api/v1`. JSON endpoints return the unified envelope:
 Errors use `success=false`, `data=null`, and structured `error.code`, `error.message`, and `error.details`. Real mode
 never substitutes Demo/Mock output. Workflow exceptions persist a failed run when a run has already been created.
 
-The 25 routes are:
+The 27 routes are:
 
 - `GET /api/v1/health`
 - `GET /api/v1/workflow/metadata`
@@ -32,6 +32,8 @@ The 25 routes are:
 - `GET /api/v1/reports/{report_id}/markdown`
 - `GET /api/v1/reports/{report_id}/json`
 - `POST /api/v1/reports/{report_id}/support`
+- `POST /api/v1/reports/{report_id}/customer-service/messages`
+- `GET /api/v1/reports/{report_id}/customer-service/conversations/{conversation_id}`
 - `GET /api/v1/reports/{report_id}/versions`
 - `POST /api/v1/reports/{report_id}/rollback`
 - `POST /api/v1/knowledge/rebuild`
@@ -47,7 +49,10 @@ candidate content, catalog/config/model context, and the accepted ASIN set; it i
 category label. `events` is a persisted `text/event-stream` with numeric `id`, named `event`, JSON `data`, heartbeat,
 terminal close, and `Last-Event-ID` replay. The Markdown endpoint returns `text/markdown`; the JSON endpoint returns
 the exact exported report document. Report support can explain a section or create a guarded local edit as a new
-immutable version; rollback also creates a new version and never mutates history.
+immutable version; rollback also creates a new version and never mutates history. Customer-service messages sit above
+these lower-level primitives: the backend stores the multi-turn conversation, classifies user intent, and decides
+whether to explain, request clarification, reject an unsupported rewrite, or create a targeted incremental report
+version.
 
 The report JSON executive summary separates `evidence_audit_manual_review_required` from
 `customs_broker_review_required`; its compatibility field `manual_review_required` is true when either scope requires

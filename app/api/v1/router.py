@@ -13,12 +13,18 @@ from app.api.responses import API_ERROR_RESPONSES, success
 from app.core.enums import FileType, RunStatus
 from app.db.repositories.sqlalchemy import SqlAlchemyAnalysisRepository
 from app.schemas.analysis import AnalysisRunCreate, AnalysisRunRead, FeedbackCreate
+from app.schemas.customer_service import (
+    CustomerServiceConversationRead,
+    CustomerServiceMessageRequest,
+    CustomerServiceMessageResponse,
+)
 from app.schemas.api import ConversationRead, FeedbackAccepted, HealthRead, KnowledgeRebuildRead
 from app.schemas.common import ApiResponse
 from app.schemas.product import ProductCreate, ProductFileRead, ProductProfile
 from app.schemas.report import FinalReport, ReportRollbackRequest, ReportSupportRequest
 from app.services.analysis_service import AnalysisService
 from app.services.conversation_service import ConversationService
+from app.services.customer_service_agent_service import CustomerServiceAgentService
 from app.services.knowledge_service import KnowledgeService
 from app.services.product_service import ProductService
 from app.services.report_support_service import ReportSupportService
@@ -406,6 +412,38 @@ def support_report(
 ):  # type: ignore[no-untyped-def]
     result = ReportSupportService(session).support(report_id, payload)
     return success(request, result)
+
+
+@router.post(
+    "/reports/{report_id}/customer-service/messages",
+    summary="Send one customer-service message about a generated report",
+    response_model=ApiResponse[CustomerServiceMessageResponse],
+    responses=API_ERROR_RESPONSES,
+)
+def customer_service_message(
+    request: Request,
+    report_id: str,
+    payload: CustomerServiceMessageRequest,
+    session: DbSession,
+):  # type: ignore[no-untyped-def]
+    result = CustomerServiceAgentService(session).handle_message(report_id, payload)
+    return success(request, result.model_dump(mode="json"))
+
+
+@router.get(
+    "/reports/{report_id}/customer-service/conversations/{conversation_id}",
+    summary="Get customer-service conversation details for one report",
+    response_model=ApiResponse[CustomerServiceConversationRead],
+    responses=API_ERROR_RESPONSES,
+)
+def get_customer_service_conversation(
+    request: Request,
+    report_id: str,
+    conversation_id: str,
+    session: DbSession,
+):  # type: ignore[no-untyped-def]
+    result = CustomerServiceAgentService(session).get_conversation(report_id, conversation_id)
+    return success(request, result.model_dump(mode="json"))
 
 
 @router.get(
