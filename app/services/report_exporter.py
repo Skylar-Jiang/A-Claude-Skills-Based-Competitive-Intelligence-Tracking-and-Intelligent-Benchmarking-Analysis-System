@@ -1,4 +1,6 @@
+import html
 import json
+import re
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -45,6 +47,7 @@ class ReportExporter:
         "new_product_overview": "新商品概况",
         "peer_market_product_analysis": "同类市场商品分析",
         "peer_market_user_insights": "同类市场用户洞察",
+        "launch_marketing_strategy": "新商品上市营销策略",
         "feature_to_peer_concern_mapping": "商品特征与同类用户关注点的对应分析",
         "prelaunch_considerations": "新商品上市前注意事项",
         "data_supported_conclusions": "数据支持的结论",
@@ -127,18 +130,11 @@ class ReportExporter:
             if plan
             else []
         )
-        evidence_index = [
-            {
-                "evidence_id": item.evidence_id,
-                "knowledge_type": item.knowledge_type.value,
-                "source_name": item.source_name,
-                "source_uri": item.source_uri,
-                "excerpt": item.excerpt,
-                "data_origin": item.data_origin.value,
-                "metadata": item.metadata,
-            }
-            for item in state.rag_evidence
-        ]
+        evidence_index = self._evidence_index(state)
+        customs_broker_review_required = bool(
+            state.background_context
+            and state.background_context.decision_inputs.get("manual_review_required")
+        )
         return {
             "executive_summary": {
                 "product_name": state.product_profile.name,
@@ -146,7 +142,11 @@ class ReportExporter:
                 "positioning": plan.positioning if plan else "",
                 "decision_status": plan.status.value if plan else None,
                 "audit_status": audit.status.value,
-                "manual_review_required": audit.manual_review_required,
+                "manual_review_required": (
+                    audit.manual_review_required or customs_broker_review_required
+                ),
+                "evidence_audit_manual_review_required": audit.manual_review_required,
+                "customs_broker_review_required": customs_broker_review_required,
                 "evidence_count": len(evidence_index),
                 "limitation_count": len(limitations),
             },
@@ -168,6 +168,7 @@ class ReportExporter:
             },
             "peer_market_product_analysis": self._dump(state.product_market_analysis),
             "peer_market_user_insights": self._dump(state.user_insight),
+            "launch_marketing_strategy": self._dump(plan),
             "feature_to_peer_concern_mapping": self._feature_concern_mapping(state),
             "prelaunch_considerations": self._prelaunch_considerations(state),
             "data_supported_conclusions": self._data_supported_conclusions(state),
@@ -219,6 +220,73 @@ class ReportExporter:
         }
 
     @staticmethod
+    def _evidence_index(state: TradePilotState) -> list[dict[str, object]]:
+        product_titles = {
+            str(item.get("parent_asin")): str(item.get("title"))
+            for item in state.selected_peer_products
+            if item.get("parent_asin") and item.get("title")
+        }
+        product_titles.update({
+            str(item.metadata.get("parent_asin")): item.source_name
+            for item in state.rag_evidence
+            if item.knowledge_type.value == "product_knowledge"
+            and item.metadata.get("parent_asin")
+        })
+        result: list[dict[str, object]] = []
+        for number, item in enumerate(state.rag_evidence, start=1):
+            parent_asin = str(item.metadata.get("parent_asin") or "")
+            if item.knowledge_type.value == "review_insight":
+                source_title = product_titles.get(parent_asin) or item.source_name
+                display_title = f"{source_title}用户评论"
+                evidence_type_label = "同类商品真实评论"
+            elif item.evidence_type == "product_background":
+                display_title = item.source_name
+                evidence_type_label = "商品背景真实资料"
+            elif item.evidence_type == "sql_statistics":
+                display_title = "同类市场商品统计"
+                evidence_type_label = "同类商品组统计"
+            else:
+                display_title = item.source_name
+                evidence_type_label = "同类商品真实资料"
+            result.append(
+                {
+                    "display_number": number,
+                    "display_label": f"证据{number}",
+                    "display_title": display_title,
+                    "evidence_type_label": evidence_type_label,
+                    "support_summary": ReportExporter._evidence_support_summary(item),
+                    "detail_path": (
+                        f"/api/v1/analysis-runs/{state.run_id}/evidence/{item.evidence_id}"
+                    ),
+                    "evidence_id": item.evidence_id,
+                    "knowledge_type": item.knowledge_type.value,
+                    "source_name": item.source_name,
+                    "source_uri": item.source_uri,
+                    "excerpt": item.excerpt,
+                    "data_origin": item.data_origin.value,
+                    "metadata": item.metadata,
+                }
+            )
+        return result
+
+    @staticmethod
+    def _evidence_support_summary(item: object) -> str:
+        evidence_type = str(getattr(item, "evidence_type", ""))
+        knowledge_type = getattr(getattr(item, "knowledge_type", None), "value", "")
+        excerpt = " ".join(str(getattr(item, "excerpt", "") or "").split())
+        if evidence_type == "product_background":
+            return "美国关税候选归类及税率资料；正式进口前仍需人工复核。"
+        if evidence_type == "sql_statistics":
+            return "同类商品组的价格、评分和评价数量等真实结构化统计。"
+        if knowledge_type == "review_insight":
+            if any("\u4e00" <= character <= "\u9fff" for character in excerpt):
+                return excerpt[:280]
+            return "同类市场商品的真实用户评论；原始文本未改写，可通过下方链接查看。"
+        if any("\u4e00" <= character <= "\u9fff" for character in excerpt):
+            return excerpt[:280]
+        return "同类市场商品的真实商品资料，包含名称、功能、参数等原始字段。"
+
+    @staticmethod
     def _tariff_selection_impact(state: TradePilotState) -> dict[str, object] | None:
         context = state.background_context
         if context is None or not context.decision_inputs:
@@ -260,6 +328,7 @@ class ReportExporter:
             if insight
             else []
         )
+        concerns = ReportExporter._customer_items(concerns)
         return [
             {
                 "product_feature": feature,
@@ -276,7 +345,7 @@ class ReportExporter:
             values.extend(state.product_market_analysis.prelaunch_validations)
             values.extend(f"缺失参数：{item}" for item in state.product_market_analysis.missing_parameters)
         if state.user_insight:
-            values.extend(state.user_insight.prelaunch_validations)
+            values.extend(ReportExporter._customer_items(state.user_insight.prelaunch_validations))
         return list(dict.fromkeys(values))
 
     @staticmethod
@@ -352,7 +421,9 @@ class ReportExporter:
             f"- audit_status: `{report.audit_status.value}`",
             "",
         ]
-        if report.audit_status is AuditStatus.REJECTED or summary.get("manual_review_required"):
+        if report.audit_status is AuditStatus.REJECTED or summary.get(
+            "evidence_audit_manual_review_required"
+        ):
             lines.extend(
                 [
                     "## Manual review required",
@@ -485,14 +556,17 @@ class ReportExporter:
         product = overview["product"]
         market = sections.get("peer_market_product_analysis") or {}
         insight = sections.get("peer_market_user_insights") or {}
+        strategy = sections.get("launch_marketing_strategy") or {}
         mappings = sections.get("feature_to_peer_concern_mapping") or []
         considerations = sections.get("prelaunch_considerations") or []
         supported = sections.get("data_supported_conclusions") or []
         hypotheses = sections.get("reasoned_hypotheses") or []
         limitations = sections.get("data_limitations_and_evidence_index") or {}
         evidence = limitations.get("evidence_index") or []
+        evidence_by_id = {item["evidence_id"]: item for item in evidence}
         tariff_snapshot = sections.get("tax_and_tariff_snapshot") or {}
         tariff_impact = sections.get("tariff_selection_impact") or {}
+        customer_text = ReportExporter._customer_text
         lines = [
             "# TradePilot 新商品上市分析报告",
             "",
@@ -500,16 +574,16 @@ class ReportExporter:
             "",
             "## 新商品概况",
             "",
-            f"- 商品名称：{product.get('name', '')}",
-            f"- 商品类别：{market.get('product_category') or product.get('category', '')}",
-            f"- 同类组：`{overview.get('peer_group_id') or '未形成'}`",
+            f"- 商品名称：{customer_text(product.get('name', ''))}",
+            f"- 商品类别：{customer_text(market.get('product_category') or product.get('category', ''))}",
+            "- 分析范围：基于 Amazon 同类市场商品及其真实评论样本。",
             "- 本商品为待上市新商品，不包含自身销量、评分或评论。",
             "",
             "## 同类市场商品分析",
             "",
-            str(market.get("product_summary") or "暂无可审计的同类商品分析。"),
+            customer_text(market.get("product_summary") or "暂无可审计的同类商品分析。"),
             "",
-            str(market.get("price_analysis") or "价格数据不足。"),
+            customer_text(market.get("price_analysis") or "价格数据不足。"),
             "",
         ]
         for label, key in (
@@ -520,7 +594,7 @@ class ReportExporter:
             ("差异化机会", "differentiation_opportunities"),
         ):
             lines.extend([f"### {label}", ""])
-            lines.extend(f"- {item}" for item in market.get(key, []))
+            lines.extend(f"- {customer_text(item)}" for item in market.get(key, []))
             if not market.get(key):
                 lines.append("- 数据不足。")
             lines.append("")
@@ -528,55 +602,98 @@ class ReportExporter:
             [
                 "## 同类市场用户洞察",
                 "",
-                str(insight.get("insight_summary") or "暂无同类商品评论样本洞察。"),
+                customer_text(insight.get("insight_summary") or "暂无同类商品评论样本洞察。"),
                 "",
             ]
         )
         for label, key in (
-            ("同类用户常见需求", "common_needs"),
-            ("常见正面体验", "positive_experiences"),
-            ("常见痛点", "pain_points"),
+            ("同类评论样本中的用户需求", "common_needs"),
+            ("评论样本中的正面体验", "positive_experiences"),
+            ("评论样本中的痛点", "pain_points"),
             ("购买决策因素", "purchase_factors"),
             ("功能、使用和维护关注点", "feature_usage_maintenance_concerns"),
             ("可转化为卖点的需求", "convertible_selling_points"),
             ("产品优化方向", "optimization_directions"),
         ):
             lines.extend([f"### {label}", ""])
-            lines.extend(f"- {item}" for item in insight.get(key, []))
-            if not insight.get(key):
+            insight_items = ReportExporter._customer_items(insight.get(key, []))
+            lines.extend(f"- {customer_text(item)}" for item in insight_items)
+            if not insight_items:
                 lines.append("- 评论证据不足。")
+            lines.append("")
+        lines.extend(["## 新商品上市营销策略", ""])
+        lines.extend(
+            [
+                "### 营销目标",
+                "",
+                customer_text(strategy.get("marketing_objective") or "证据不足，暂未形成明确营销目标。"),
+                "",
+                "### 市场定位",
+                "",
+                customer_text(strategy.get("positioning") or "证据不足，暂未形成市场定位。"),
+                "",
+            ]
+        )
+        for label, key in (
+            ("目标客群", "target_segments"),
+            ("核心价值主张", "value_propositions"),
+            ("定价策略", "pricing_strategy"),
+            ("渠道策略", "channel_strategy"),
+            ("传播信息策略", "messaging_strategy"),
+            ("上市执行动作", "launch_actions"),
+        ):
+            lines.extend([f"### {label}", ""])
+            lines.extend(f"- {customer_text(item)}" for item in strategy.get(key, []))
+            if not strategy.get(key):
+                lines.append("- 证据或输入不足，暂不生成确定性策略。")
             lines.append("")
         lines.extend(["## 商品特征与同类用户关注点的对应分析", ""])
         for item in mappings:
             lines.append(
-                f"- {item['product_feature']} ↔ {item['peer_user_concern']}。{item['interpretation']}"
+                f"- {customer_text(item['product_feature'])} ↔ "
+                f"{customer_text(item['peer_user_concern'])}。{customer_text(item['interpretation'])}"
             )
         if not mappings:
             lines.append("- 暂无可对应的商品特征与评论关注点。")
         lines.extend(["", "## 新商品上市前注意事项", ""])
-        lines.extend(f"- {item}" for item in considerations)
+        lines.extend(f"- {customer_text(item)}" for item in considerations)
         if not considerations:
             lines.append("- 补充验证数据后再形成确定性结论。")
         lines.extend(["", "## 数据支持的结论", ""])
         for item in supported:
-            lines.append(
-                f"- {item['conclusion']} [evidence: {', '.join(item.get('evidence_ids') or [])}]"
+            citations = [
+                evidence_by_id[evidence_id]
+                for evidence_id in item.get("evidence_ids") or []
+                if evidence_id in evidence_by_id
+            ]
+            suffix = " ".join(
+                f"[{citation['display_label']}]({citation['detail_path']})" for citation in citations
             )
+            lines.append(f"- {customer_text(item['conclusion'])} {suffix}".rstrip())
         if not supported:
             lines.append("- 暂无通过证据审校的数据结论。")
         lines.extend(["", "## 基于商品属性的待验证假设", ""])
-        lines.extend(f"- {item}" for item in hypotheses)
+        lines.extend(f"- {customer_text(item)}" for item in hypotheses)
         if not hypotheses:
             lines.append("- 暂无属性推导假设。")
         lines.extend(["", "## 美国税费快照", ""])
         if tariff_snapshot:
-            lines.append(f"- Provider：`{tariff_snapshot.get('provider') or 'not_available'}`")
+            lines.append(f"- 数据提供方：`{tariff_snapshot.get('provider') or '未提供'}`")
             lines.append(f"- 市场：{tariff_snapshot.get('market') or '未提供'}")
             lines.append(f"- 法域：{tariff_snapshot.get('jurisdiction') or '未提供'}")
             if tariff_snapshot.get("effective_date"):
                 lines.append(f"- 生效日期：{tariff_snapshot['effective_date']}")
-            for item in tariff_snapshot.get("tariff_evidence") or []:
-                lines.append(f"- `{item['evidence_id']}`：{item['summary']}")
+            tariff_summary = (tariff_snapshot.get("decision_inputs") or {}).get("tariff_summary")
+            tariff_citations = [
+                evidence_by_id[item["evidence_id"]]
+                for item in tariff_snapshot.get("tariff_evidence") or []
+                if item["evidence_id"] in evidence_by_id
+            ]
+            tariff_links = " ".join(
+                f"[{item['display_label']}]({item['detail_path']})" for item in tariff_citations
+            )
+            if tariff_summary:
+                lines.append(f"- {customer_text(tariff_summary)} {tariff_links}".rstrip())
             for gap in tariff_snapshot.get("data_gaps") or []:
                 lines.append(f"- 数据缺口：{gap['field']}：{gap['reason']}")
             if not tariff_snapshot.get("tariff_evidence") and not tariff_snapshot.get("data_gaps"):
@@ -592,7 +709,17 @@ class ReportExporter:
                 lines.append(f"- {item}")
             risk_flags = tariff_impact.get("risk_flags") or []
             if risk_flags:
-                lines.append(f"- 风险标记：{', '.join(risk_flags)}")
+                translated_flags = {
+                    "broker_review_required": "需要报关归类复核",
+                    "candidate_mapping_low_confidence": "候选归类置信度有限",
+                    "additional_duty_present": "存在附加税信息",
+                    "special_rate_text_present": "存在特殊税率说明",
+                    "non_free_general_rate": "一般税率非 Free",
+                }
+                lines.append(
+                    "- 风险标记："
+                    + "、".join(translated_flags.get(flag, flag) for flag in risk_flags)
+                )
             lines.append(
                 f"- 是否需要人工复核：{'是' if tariff_impact.get('manual_review_required') else '否'}"
             )
@@ -605,12 +732,89 @@ class ReportExporter:
             lines.append(f"- {item['field']}：{item['reason']}")
         for item in evidence:
             metadata = item.get("metadata") or {}
-            lines.append(
-                f"- `{item['evidence_id']}` - {item['source_name']} "
-                f"(peer_group={metadata.get('peer_group_id', 'n/a')}, "
-                f"parent_asin={metadata.get('parent_asin', 'n/a')})"
+            support_summary = customer_text(item.get("support_summary") or "")
+            is_peer_evidence = metadata.get("evidence_scope") == "peer_product"
+            source_label = "来源商品" if is_peer_evidence else "来源"
+            source_value = customer_text(item["display_title"].removesuffix("用户评论"))
+            source_row = metadata.get("source_row")
+            lines.extend(
+                [
+                    f"### {item['display_label']}｜{customer_text(item['display_title'])}",
+                    "",
+                    f"- 证据类型：{item['evidence_type_label']}",
+                    f"- 支持内容：{support_summary or '未提供摘要。'}",
+                    f"- {source_label}：{source_value}",
+                    (
+                        f"- 原始位置：源数据第 {source_row} 行"
+                        if source_row
+                        else "- 原始位置：可通过下方证据详情查看。"
+                    ),
+                    f"- [查看原始证据]({item['detail_path']})",
+                    "",
+                ]
             )
         if not evidence:
             lines.append("- 无有效证据索引。")
         lines.append("")
         return "\n".join(lines)
+
+    @staticmethod
+    def _customer_text(value: object) -> str:
+        """Hide machine identifiers in rendered prose while preserving JSON/link mappings."""
+        text = " ".join(str(value).split())
+        replacements = {
+            "removable reservoir and visible water level": "可拆卸储水容器和可视水位",
+            "removable reservoir": "可拆卸储水容器",
+            "reservoir": "储水容器",
+            "visible water level": "可视水位",
+            "Professional, Caring, Modern": "专业、关怀、现代",
+            "Professional, Reassuring, Modern": "专业、可信、现代",
+        }
+        for source, target in replacements.items():
+            text = re.sub(re.escape(source), target, text, flags=re.IGNORECASE)
+        text = re.sub(
+            r"^基于\s*\d+\s*款同类商品共\s*\d+\s*条评论的统计分析[，,]\s*",
+            "参考 Amazon 数据中的同类市场商品及其真实评论样本，",
+            text,
+        )
+        text = re.sub(
+            r"[（(]\s*(?:evidence_id|证据ID)\s*[:：]\s*[^)）]*[)）]",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\bevidence_id\s*[:：]\s*[A-Za-z0-9_.:-]+",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"(?<![A-Z0-9])B0[A-Z0-9]{8}(?![A-Z0-9])", "同类商品样本", text)
+        text = re.sub(
+            r"(?:同类商品样本\s*[,，、]\s*)+同类商品样本",
+            "多个同类商品样本",
+            text,
+        )
+        text = text.replace("用户普遍关注", "同类商品评论样本中出现对")
+        text = text.replace("所有竞品", "所检索的同类商品样本")
+        text = text.replace("多数竞品", "所检索的多个同类商品样本")
+        text = re.sub(r"[ \t]+([，。；：！？])", r"\1", text).strip()
+        text = html.escape(text, quote=False)
+        return re.sub(r"([\\`*_\[\]])", r"\\\1", text)
+
+    @staticmethod
+    def _customer_items(values: object) -> list[str]:
+        if not isinstance(values, list):
+            return []
+        unsupported_markers = ("无直接引用", "no direct citation", "no direct evidence")
+        return [
+            str(item)
+            for item in values
+            if not any(marker in str(item).casefold() for marker in unsupported_markers)
+        ]

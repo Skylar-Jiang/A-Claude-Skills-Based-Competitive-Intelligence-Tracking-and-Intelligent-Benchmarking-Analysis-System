@@ -49,12 +49,24 @@ Optional product-background context is behind `BackgroundProviderRegistry`. The 
 facts. A configured provider must return dated, jurisdiction-scoped evidence; Agents and audit receive only those
 traceable records, never model-invented policy, tax, or platform facts.
 
+Peer-group filtering applies `selected_parent_asins` only to peer-product evidence. Product-background evidence has a
+separate scope and remains in the unified evidence set for OperationsDecisionAgent, EvidenceAuditAgent, persistence,
+numbered report citations and the evidence-detail API.
+
 ## Offline and online boundary
 
 Offline preparation may sequentially scan each source JSONL once and writes only ignored lightweight caches. Online
 analysis may query catalog FTS, embed the bounded candidate set, seek selected review offsets, and upsert only the
 selected peer group into the two small runtime Chroma collections. It may not rebuild caches, scan all source rows,
 embed the full corpus, or touch the separate full-index workflow.
+
+`product_type_flags.sqlite` is an optional full-catalog audit cache derived from the prepared catalog's source category
+paths. It records one traceable flag for every `parent_asin`, including an explicit unresolved flag when categories are
+missing. It supports inventory and data-quality review; it is not a global taxonomy, a fixed peer-group table, or a hard
+online acceptance gate. A flag cannot create absent review evidence or guarantee that a terminal type has enough
+qualified peers.
+Its metadata includes the catalog source/schema signatures and the explicit source-leaf classifier version. A version
+change invalidates only this optional audit cache; it does not rebuild catalog FTS, review offsets, or vector indexes.
 
 FTS is a candidate-recall layer over normalized title, description, features, details, category text, and target
 species. It is not a fixed-category lookup. No global category label or prebuilt peer group is required. Category
@@ -96,3 +108,7 @@ The composition root loads shared `.env` values followed by `.env.<APP_ENV>` ove
 continues to isolate tests. HTTP middleware emits only request ID, method, path, status, duration and exception type;
 it never logs headers, query strings, bodies or credentials. Programmatic Alembic upgrades preserve the host
 application's log handlers instead of replacing Uvicorn/test logging configuration.
+
+Real Markdown is a presentation view, not the evidence store. It removes peer-group UUIDs, ASINs and inline machine
+citations, uses readable product titles from the selected peer set and links `证据N` to the original persisted record.
+The JSON report and evidence-detail endpoint retain all IDs, raw excerpts, source files and row locators.

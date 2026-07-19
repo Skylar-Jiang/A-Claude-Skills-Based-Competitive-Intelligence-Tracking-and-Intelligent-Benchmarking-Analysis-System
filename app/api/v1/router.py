@@ -228,6 +228,27 @@ def get_analysis_evidence(request: Request, run_id: str, session: DbSession):  #
 
 
 @router.get(
+    "/analysis-runs/{run_id}/evidence/{evidence_id}",
+    summary="Get one persisted evidence reference",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def get_analysis_evidence_detail(
+    request: Request,
+    run_id: str,
+    evidence_id: str,
+    session: DbSession,
+):  # type: ignore[no-untyped-def]
+    service = analysis_service(request, session)
+    run = service.get_run(run_id)
+    return success(
+        request,
+        {"run_id": run_id, "evidence": service.get_evidence(run_id, evidence_id)},
+        data_mode=run.data_mode.value,
+    )
+
+
+@router.get(
     "/analysis-runs/{run_id}/audit",
     summary="Get the persisted evidence-audit result",
     response_model=ApiResponse[dict[str, object]],

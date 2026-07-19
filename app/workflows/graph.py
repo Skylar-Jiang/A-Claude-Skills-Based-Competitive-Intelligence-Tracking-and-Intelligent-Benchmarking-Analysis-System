@@ -178,7 +178,12 @@ class TradePilotWorkflow:
             gaps.extend(result.data_gaps)
         if state.retrieval_scope.value == "peer_group" and state.selected_parent_asins:
             selected = set(state.selected_parent_asins)
-            evidence = [item for item in evidence if str(item.metadata.get("parent_asin") or "") in selected]
+            evidence = [
+                item
+                for item in evidence
+                if item.metadata.get("evidence_scope") == "product_background"
+                or str(item.metadata.get("parent_asin") or "") in selected
+            ]
         product_evidence = [
             item for item in evidence if item.knowledge_type is KnowledgeType.PRODUCT_KNOWLEDGE
         ]

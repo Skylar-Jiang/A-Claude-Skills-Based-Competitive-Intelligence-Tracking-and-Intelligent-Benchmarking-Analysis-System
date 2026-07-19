@@ -84,6 +84,26 @@ def test_default_config_keeps_accessory_terms_out_of_python_source() -> None:
     assert 10 <= config.final_peer_limit <= 30
 
 
+def test_default_config_excludes_real_fountain_accessory_title_variants() -> None:
+    signature = CandidateProductSignature.from_product(_new_product())
+    config = load_peer_match_config(Path("config/peer_matching.yaml"))
+    complete = _catalog_product(
+        "FOUNTAIN",
+        "3L Cat Water Fountain with 3 Filters and Quiet Circulation",
+    )
+    accessories = [
+        _catalog_product("FILTERS", "NautyPaws Cat Fountain Filters, 16 Pack"),
+        _catalog_product("FILTER", "Cat Water Fountain Filter, 16 Pack"),
+        _catalog_product("SPONGE", "Cat Fountain Filter Replacement Sponge Foam"),
+        _catalog_product("KIT", "PETKIT Cat Water Fountain Cleaning Kit"),
+    ]
+
+    result = rule_prefilter(signature, [complete, *accessories], config)
+
+    assert [item.product.parent_asin for item in result.candidates] == ["FOUNTAIN"]
+    assert result.excluded_accessory_count == len(accessories)
+
+
 def test_rule_prefilter_excludes_accessories_and_does_not_use_price_as_the_only_signal() -> None:
     signature = CandidateProductSignature.from_product(_new_product())
     config = PeerMatchConfig(

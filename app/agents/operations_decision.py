@@ -27,14 +27,27 @@ NUMERIC_CLAIM_PATTERN = r"(?<![A-Za-z0-9_.-])\d+(?:\.\d+)?%?"
 OPERATIONS_SYSTEM_PROMPT = """
 You are TradePilot OperationsDecisionAgent. The target is an unlisted new product with no sales or reviews.
 All natural-language narrative content must be written in Simplified Chinese.
-Keep JSON keys, enum values, evidence_id, ASIN, brand names, product names, and units in their original form.
-Use only the supplied new-product profile and the two evidence-grounded analyses.
-Never turn a reasoned_hypothesis into a fact, never attribute peer reviews to the new product,
-and never invent evidence IDs or numeric facts.
+Keep JSON keys, enum values, brand names, product names, and units in their original form.
+Put evidence_id and ASIN only in their dedicated machine fields; never place UUID, evidence_id, parent_asin, or ASIN
+inside positioning, strategy fields, conclusions, data gaps, or next_steps.
+Your primary deliverable is an actionable launch marketing strategy, not another product-description summary.
+Do not state the exact number of peer products or reviews in user-facing prose. Translate descriptive labels and tone
+words into Chinese; English is allowed only for immutable brand names, product names, official codes, and units.
+Convert the supplied market and user analyses into a specific marketing objective, target segments, value
+propositions, pricing strategy, channel strategy, messaging strategy, and evidence-bounded launch actions. Do not
+merely repeat feature lists or peer-review findings. Explain how verified findings change positioning, messages,
+channels, pricing, or launch gates. Use only the supplied new-product profile and the two evidence-grounded analyses.
+Never turn a reasoned_hypothesis into a fact,
+never attribute peer reviews to the new product, and never invent evidence IDs or numeric facts.
+A reasoned_hypothesis must be derived only from new-product structure, parameters, or usage scenarios. It must not
+claim that users "普遍", "高度关注", "反馈", or that reviews "显示/表明" anything; such user/review statements require
+peer-review evidence and an evidence-summary conclusion type.
+Do not set review-count, rating, conversion, discount, timing, or performance targets unless those exact numbers are
+present in the supplied structured inputs. Prefer qualitative launch objectives when the user supplied no target.
 When Product background includes tariff decision inputs, reflect their impact on landed cost, margin, pricing buffer,
 launch gating, or broker-review requirements instead of treating them as passive reference material.
-Return only JSON with status, positioning, conclusions, evidence_ids, data_gaps, and next_steps.
-positioning must be one plain string, never an object or array.
+Return only JSON with status, positioning, marketing_objective, target_segments, value_propositions, pricing_strategy,
+channel_strategy, messaging_strategy, launch_actions, conclusions, evidence_ids, data_gaps, and next_steps.
 Every factual conclusion must use an evidence_id already present in the supplied analyses or Product background.
 Use 同类市场商品, 同类商品评论样本, 同类用户常见关注点, and 新商品上市前需验证事项.
 Each conclusion must be {{"conclusion":"...","conclusion_type":"recommendation|evidence_summary|reasoned_hypothesis",
@@ -75,6 +88,17 @@ class OperationsDecisionAgent(BaseScaffoldAgent[OperationsDecisionAgentInput, Op
 
     def _run_model(self, context: OperationsDecisionAgentInput) -> OperationPlan:
         model = self.model or create_operations_model()
+        normalization_attempt = 0
+
+        def normalize(payload: dict[str, Any]) -> OperationPlan:
+            nonlocal normalization_attempt
+            normalization_attempt += 1
+            return self._postprocess(
+                payload,
+                context,
+                allow_strategy_objects=normalization_attempt > 1,
+            )
+
         result = invoke_structured(
             prompt=self.prompt,
             model=model,
@@ -97,7 +121,7 @@ class OperationsDecisionAgent(BaseScaffoldAgent[OperationsDecisionAgentInput, Op
                 "insight": self._compact_analysis(context.user_insight),
             },
             output_model=OperationPlan,
-            normalize=lambda payload: self._postprocess(payload, context),
+            normalize=normalize,
             max_parse_retries=get_settings().model_parse_max_retries,
         )
         return result.value.model_copy(
@@ -109,7 +133,13 @@ class OperationsDecisionAgent(BaseScaffoldAgent[OperationsDecisionAgentInput, Op
             }
         )
 
-    def _postprocess(self, payload: dict[str, Any], context: OperationsDecisionAgentInput) -> OperationPlan:
+    def _postprocess(
+        self,
+        payload: dict[str, Any],
+        context: OperationsDecisionAgentInput,
+        *,
+        allow_strategy_objects: bool = False,
+    ) -> OperationPlan:
         payload = normalize_model_data_gaps(payload, field="operations_decision")
         background_ids = (
             [item.evidence_id for item in context.background_context.evidence]
@@ -165,17 +195,67 @@ class OperationsDecisionAgent(BaseScaffoldAgent[OperationsDecisionAgentInput, Op
         payload.setdefault("data_gaps", [])
         payload["next_steps"] = normalize_text_list(payload.get("next_steps", []))
         payload["positioning"] = self._normalize_positioning(payload.get("positioning", ""))
+        payload["marketing_objective"] = self._normalize_positioning(
+            payload.get("marketing_objective", "")
+        )
+        strategy_fields = (
+            "target_segments",
+            "value_propositions",
+            "pricing_strategy",
+            "channel_strategy",
+            "messaging_strategy",
+            "launch_actions",
+        )
+        for field in strategy_fields:
+            payload[field] = self._normalize_strategy_list(
+                payload.get(field, []),
+                allow_objects=allow_strategy_objects,
+            )
         content = self.content_skill.build(product=context.product, positioning=payload["positioning"])
         payload["next_steps"] = [*payload["next_steps"], *content.as_next_steps()]
         allowed_numbers = self._allowed_numbers(context)
-        payload["positioning"] = self._sanitize_numeric_text(payload["positioning"], allowed_numbers)
-        for conclusion in payload["conclusions"]:
-            conclusion["conclusion"] = self._sanitize_numeric_text(
+        removed_unsupported_numbers = False
+        if self._has_unsupported_numbers(payload["positioning"], allowed_numbers):
+            removed_unsupported_numbers = True
+            payload["positioning"] = "基于已验证的商品属性和同类市场证据建立差异化定位。"
+        if self._has_unsupported_numbers(payload["marketing_objective"], allowed_numbers):
+            removed_unsupported_numbers = True
+            payload["marketing_objective"] = (
+                "围绕已验证的目标客群与价值主张建立首发认知；具体量化目标需由用户确认。"
+            )
+        for field in strategy_fields:
+            accepted_items = [
+                item
+                for item in payload[field]
+                if not self._has_unsupported_numbers(item, allowed_numbers)
+            ]
+            removed_unsupported_numbers |= len(accepted_items) != len(payload[field])
+            payload[field] = accepted_items
+        accepted_conclusions = [
+            conclusion
+            for conclusion in payload["conclusions"]
+            if not self._has_unsupported_numbers(
                 conclusion.get("conclusion", ""), allowed_numbers
             )
-        payload["next_steps"] = [
-            self._sanitize_numeric_text(step, allowed_numbers) for step in payload["next_steps"]
         ]
+        removed_unsupported_numbers |= len(accepted_conclusions) != len(payload["conclusions"])
+        payload["conclusions"] = accepted_conclusions
+        accepted_next_steps = [
+            step
+            for step in payload["next_steps"]
+            if not self._has_unsupported_numbers(step, allowed_numbers)
+        ]
+        removed_unsupported_numbers |= len(accepted_next_steps) != len(payload["next_steps"])
+        payload["next_steps"] = accepted_next_steps
+        if removed_unsupported_numbers:
+            payload["data_gaps"].append(
+                {
+                    "code": "unsupported_marketing_numeric_target",
+                    "field": "operation_plan",
+                    "reason": "模型提出了输入证据未支持的量化目标，已从面向用户的策略中移除。",
+                    "required_for": "形成可执行的量化营销目标",
+                }
+            )
         return OperationPlan.model_validate(payload)
 
     @staticmethod
@@ -189,6 +269,16 @@ class OperationsDecisionAgent(BaseScaffoldAgent[OperationsDecisionAgentInput, Op
             re.findall(
                 NUMERIC_SOURCE_PATTERN,
                 json.dumps(source, ensure_ascii=False, default=str),
+            )
+        )
+        product_claim_source = context.product.model_dump(
+            mode="json",
+            exclude={"product_id", "file_references", "data_gaps"},
+        )
+        values.update(
+            re.findall(
+                NUMERIC_CLAIM_PATTERN,
+                json.dumps(product_claim_source, ensure_ascii=False, default=str),
             )
         )
         for value in list(values):
@@ -210,20 +300,90 @@ class OperationsDecisionAgent(BaseScaffoldAgent[OperationsDecisionAgentInput, Op
         return re.sub(NUMERIC_CLAIM_PATTERN, replace, text)
 
     @staticmethod
+    def _has_unsupported_numbers(value: object, allowed_numbers: set[str]) -> bool:
+        return any(
+            match.group(0) not in allowed_numbers
+            for match in re.finditer(NUMERIC_CLAIM_PATTERN, str(value))
+        )
+
+    @staticmethod
     def _normalize_positioning(value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("OperationPlan strategy summary fields must be strings")
+        return value.strip()
+
+    @staticmethod
+    def _normalize_strategy_list(value: object, *, allow_objects: bool = False) -> list[str]:
+        if isinstance(value, str):
+            return [value.strip()] if value.strip() else []
+        if isinstance(value, list) and all(isinstance(item, str) for item in value):
+            return [item.strip() for item in value if item.strip()]
+        if not allow_objects:
+            raise ValueError("OperationPlan strategy list fields must contain only strings")
+        return list(dict.fromkeys(OperationsDecisionAgent._render_strategy_values(value)))
+
+    @staticmethod
+    def _render_strategy_values(value: object) -> list[str]:
+        if isinstance(value, str):
+            return [value.strip()] if value.strip() else []
+        if isinstance(value, list):
+            return [
+                rendered
+                for item in value
+                for rendered in OperationsDecisionAgent._render_strategy_values(item)
+            ]
+        if not isinstance(value, dict):
+            return []
+        rendered = OperationsDecisionAgent._render_strategy_item(value)
+        if rendered:
+            return [rendered]
+        return [
+            nested
+            for key, item in value.items()
+            if not OperationsDecisionAgent._is_machine_strategy_key(key)
+            for nested in OperationsDecisionAgent._render_strategy_values(item)
+        ]
+
+    @staticmethod
+    def _render_strategy_item(value: str | dict[str, Any]) -> str:
         if isinstance(value, str):
             return value.strip()
-        if isinstance(value, dict):
-            for key in ("positioning", "summary", "text", "value", "conclusion"):
-                candidate = value.get(key)
-                if isinstance(candidate, str) and candidate.strip():
-                    return candidate.strip()
-            parts = [str(item).strip() for item in value.values() if str(item).strip()]
-            return "；".join(parts)
-        if isinstance(value, list):
-            parts = [str(item).strip() for item in value if str(item).strip()]
-            return "；".join(parts)
-        return str(value).strip()
+        title = next(
+            (
+                str(value[key]).strip()
+                for key in ("segment_name", "proposition", "action", "name", "title")
+                if value.get(key)
+            ),
+            "",
+        )
+        description = next(
+            (
+                str(value[key]).strip()
+                for key in ("description", "rationale", "strategy", "message", "reason")
+                if value.get(key)
+            ),
+            "",
+        )
+        has_chinese_title = any("\u4e00" <= character <= "\u9fff" for character in title)
+        if description:
+            return f"{title}：{description}" if title and has_chinese_title else description
+        parts = [
+            str(item).strip()
+            for key, item in value.items()
+            if not OperationsDecisionAgent._is_machine_strategy_key(key)
+            and isinstance(item, (str, int, float))
+            and str(item).strip()
+        ]
+        return "；".join(dict.fromkeys(parts))
+
+    @staticmethod
+    def _is_machine_strategy_key(key: str) -> bool:
+        normalized = key.casefold()
+        return (
+            normalized in {"priority", "type", "confidence", "parent_asin", "asin"}
+            or normalized.endswith("_id")
+            or normalized.endswith("_ids")
+        )
 
     @staticmethod
     def _compact_analysis(value: Any) -> str:

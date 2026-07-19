@@ -189,6 +189,10 @@ def test_us_tariff_provider_persists_real_tariff_evidence_with_provenance(tmp_pa
     assert snapshot["decision_inputs"]["tariff_recommended_actions"]
     tariff_impact = payload["sections"]["tariff_selection_impact"]
     assert tariff_impact["manual_review_required"] is True
+    executive_summary = payload["sections"]["executive_summary"]
+    assert executive_summary["manual_review_required"] is True
+    assert executive_summary["evidence_audit_manual_review_required"] is False
+    assert executive_summary["customs_broker_review_required"] is True
     assert tariff_impact["selection_impact"]
     assert "landed cost" in " ".join(tariff_impact["selection_impact"])
     assert any(

@@ -13,6 +13,20 @@ python -m ruff check app tests scripts
 python scripts\smoke_test.py
 ```
 
+Full-catalog terminal-type inventory is a separate offline audit. It assigns every prepared catalog row a
+source-derived type flag without embedding or rewriting the catalog:
+
+```powershell
+python scripts\audit_catalog_product_types.py
+```
+
+The command writes ignored `data/demo/cache/product_type_flags.sqlite` and
+`data/demo/validation/terminal_product_type_inventory.json`. A repeated run reuses the flag cache when the catalog
+source signature and schema are unchanged. `__unresolved__` is a valid audit result for missing category data; a type
+flag does not imply that reviews exist and is not permission to fabricate or quota-fill a peer group.
+Cache reuse also requires the explicit classifier version to match; the regression suite verifies that changing it
+rebuilds only `product_type_flags.sqlite`.
+
 Peer boundary tests verify candidate products have no own reviews, accessory exclusion, quality-gated peer selection,
 `parent_asin` review association, peer-group retrieval, evidence scope, Agent terminology, hypothesis labeling, actual
 fan-out overlap, cache idempotency, and absence of full-corpus embedding. Semantic audit tests additionally cover
@@ -41,7 +55,8 @@ Real final acceptance additionally requires:
 7. Assert metadata contains matcher/embedding versions, rule/semantic thresholds, cache/matching/review timings,
    runtime SQLite persistence, RAG build/ingest/retrieval, SQL statistics, all Agent durations, and workflow duration.
 8. Run `python scripts/smoke_multi_product_matching.py` with real credentials and confirm all ten terminal-product
-   cases reuse both caches, have no orphan reviews, and contain no configured accessory-only products.
+   cases reuse both caches, have no orphan reviews, and contain no configured accessory-only products. Inspect selected
+   titles as well as counts; a numeric quota alone is not a semantic-quality assertion.
 9. Run `python scripts/real_http_e2e.py`; it verifies async polling, SSE replay, the six frontend read views, report
    Markdown/JSON, report support, peer evidence scope, four Agents, and actual ProductMarket/UserInsight overlap.
 

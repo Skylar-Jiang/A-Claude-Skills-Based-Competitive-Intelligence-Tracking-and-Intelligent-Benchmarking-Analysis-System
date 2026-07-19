@@ -320,7 +320,11 @@ def test_all_four_real_lcel_agents_use_peer_safe_semantics() -> None:
     assert result.operation_plan.conclusions[0].conclusion_type == "recommendation"
     assert result.operation_plan.conclusions[0].confidence > 0
     assert "18dB" not in result.operation_plan.model_dump_json()
-    assert "待验证数值" in result.operation_plan.model_dump_json()
+    assert "待验证数值" not in result.operation_plan.model_dump_json()
+    assert any(
+        gap.code == "unsupported_marketing_numeric_target"
+        for gap in result.operation_plan.data_gaps
+    )
     assert result.audit_result is not None
     assert result.audit_result.status is AuditStatus.WARNING
     assert result.audit_result.manual_review_required is False

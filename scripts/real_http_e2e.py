@@ -37,29 +37,29 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             client.post(
                 "/api/v1/products",
                 json={
-                    "name": "NovaClean Automatic Self Cleaning Cat Litter Box",
-                    "category": "automatic self cleaning cat litter box",
+                    "name": "Cordless 3L Stainless Steel Cat Water Fountain",
+                    "category": "pet water fountain",
                     "description": (
-                        "Unlisted complete automatic litter toilet with a rotating cleaning chamber, "
-                        "removable waste drawer, safety sensors, and odor-control compartment."
+                        "Unlisted complete cordless drinking fountain for cats with a stainless steel basin, "
+                        "rechargeable circulation system, removable reservoir, and visible water level."
                     ),
                     "attributes": {
                         "Target Species": "Cat",
-                        "Product Type": "Automatic Self Cleaning Litter Box",
-                        "Waste Drawer": "Removable",
+                        "Product Type": "Pet Water Fountain",
+                        "Capacity": "3L",
                     },
                     "features": [
-                        "automatic self cleaning",
-                        "removable waste drawer",
-                        "cat safety sensors",
-                        "odor control compartment",
+                        "cordless rechargeable circulation",
+                        "stainless steel drinking basin",
+                        "removable reservoir",
+                        "visible water level",
                     ],
-                    "use_scenarios": ["indoor multi-cat litter management"],
+                    "use_scenarios": ["indoor cat hydration without a nearby power outlet"],
                     "target_market": "United States",
                     "target_audience": ["indoor cat owners"],
-                    "target_price": 299.99,
+                    "target_price": 39.99,
                     "target_currency": "USD",
-                    "known_risks": ["sensor validation", "cleaning mechanism validation"],
+                    "known_risks": ["pump noise validation", "battery endurance validation"],
                     "data_mode": "real",
                 },
             )
@@ -73,6 +73,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "target_market": "United States",
                 "jurisdiction": "US",
                 "platform": "Amazon",
+                "background_context_types": ["tariff_rate"],
+                "background_provider": "us-tariff-provider",
                 "user_constraints": {
                     "new_product_has_own_reviews": False,
                     "new_product_has_own_sales": False,
@@ -100,6 +102,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         agents = _data(client.get(f"/api/v1/analysis-runs/{run_id}/agents"))
         peers = _data(client.get(f"/api/v1/analysis-runs/{run_id}/peers"))
         evidence = _data(client.get(f"/api/v1/analysis-runs/{run_id}/evidence"))
+        first_evidence_id = evidence["evidence"][0]["evidence_id"]
+        evidence_detail = _data(
+            client.get(f"/api/v1/analysis-runs/{run_id}/evidence/{first_evidence_id}")
+        )
         audit = _data(client.get(f"/api/v1/analysis-runs/{run_id}/audit"))
         metadata = _data(client.get(f"/api/v1/analysis-runs/{run_id}/metadata"))
         report_id = run["report_id"]
@@ -136,6 +142,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     assert all(item["metadata"]["parent_asin"] in parent_asins for item in review_evidence)
     assert all(item["metadata"]["evidence_scope"] == "peer_product" for item in review_evidence)
     assert all(item["metadata"]["peer_group_id"] == peers["peer_group_id"] for item in review_evidence)
+    assert evidence_detail["evidence"]["evidence_id"] == first_evidence_id
+    peer_titles = [str(item["title"]).casefold() for item in peers["peers"]]
+    for accessory_phrase in ("replacement filter", "cat fountain filter", "cleaning kit"):
+        assert all(accessory_phrase not in title for title in peer_titles)
     assert len(agents["agents"]) == 4
     assert all(item["real_model_called"] is True for item in agents["agents"])
     assert all(item["provider"] and item["model_name"] for item in agents["agents"])
@@ -143,14 +153,40 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     assert observed_nodes != {"product_preparation"}
     assert metadata["workflow_metadata"]["parallel_agent_overlap"] is True
     assert report["is_demo"] is False
+    strategy = report["sections"]["launch_marketing_strategy"]
+    assert strategy["marketing_objective"]
+    assert strategy["target_segments"]
+    assert strategy["value_propositions"]
+    assert strategy["pricing_strategy"]
+    assert strategy["channel_strategy"]
+    assert strategy["messaging_strategy"]
+    assert strategy["launch_actions"]
+    assert report["sections"]["tax_and_tariff_snapshot"]["tariff_evidence"]
     assert report_json["report_id"] == report_id
     assert audit["audit"]["status"] in {"pass", "warning"}
     assert set(support["evidence_ids"]).issubset(evidence_ids)
     assert replay_ids == event_ids[1:]
-    for forbidden in ("DEMO", "Scaffold", "当前商品用户反馈", "该商品用户普遍认为", "当前商品差评"):
+    for forbidden in (
+        "DEMO",
+        "Scaffold",
+        "当前商品用户反馈",
+        "该商品用户普遍认为",
+        "当前商品差评",
+        "evidence_id",
+        "证据ID",
+        "待验证数值",
+        "同类组：",
+        "Configured Phase",
+        "{'",
+    ):
         assert forbidden not in markdown
+    assert re.search(r"(?<![A-Z0-9])B0[A-Z0-9]{8}(?![A-Z0-9])", markdown) is None
     assert "同类市场商品分析" in markdown
     assert "同类市场用户洞察" in markdown
+    assert "新商品上市营销策略" in markdown
+    assert "分析范围：基于 Amazon 同类市场商品及其真实评论样本" in markdown
+    assert "### 营销目标" in markdown
+    assert "### 证据" in markdown
     assert "待验证假设" in markdown
 
     result = {

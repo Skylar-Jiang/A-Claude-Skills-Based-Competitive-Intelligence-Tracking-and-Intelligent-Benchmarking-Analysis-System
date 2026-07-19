@@ -83,3 +83,39 @@ After the account balance was restored, final clean run `33855f70-0be7-4dbb-a0c3
   ASINs, units, JSON/anchor identifiers and source excerpts.
 - Final deterministic gates: `pip check` passed, 154 tests passed with 3 opt-in external tests skipped, compileall and
   Ruff passed, Smoke Test returned four Agent outputs, three evidence references and one report.
+
+## Final peer-inventory and marketing-report run — 2026-07-17
+
+- Run `bf27ffc7-518b-404a-a0f6-6130bd487db6`, report `7712b5f5-1436-463e-9650-ea82156274fa`, status `succeeded`,
+  audit `warning`, manual review false.
+- Prefilter/rerank/final peers: 300 / 40 / 20; 477 accessory candidates excluded; 20 real peer products and 79
+  unique peer reviews produced 99 small-Chroma documents. Matcher `peer-matcher-v2`, Qwen `text-embedding-v4`, rule
+  threshold 0.2 and semantic threshold 0.45 were recorded.
+- ProductMarketAgent 17,530 ms and UserInsightAgent 21,395 ms overlapped. OperationsDecisionAgent 102,566 ms used two
+  real Qwen calls because the first strategy-list Schema was invalid; EvidenceAuditAgent 4,651 ms. Workflow 129,813
+  ms; complete HTTP E2E 145,315 ms.
+- The run returned 29 SSE events with 28-event replay, all read views, evidence detail, Markdown, JSON and report
+  support. Real mode never fell back during preceding provider connection, timeout or Schema failures.
+- Post-run rendering audit removed peer-group UUIDs, ASINs, empty inline evidence labels, Python object literals and
+  exact peer/review counts from customer Markdown. `证据N` links preserve the JSON/detail mapping to raw source data.
+- Final deterministic gates: `pip check` clean, 182 passed and 3 opt-in skips, `compileall`, Ruff and Smoke Test all
+  returned zero.
+
+## Final semantic-audit and report run — 2026-07-17
+
+- Run `c8cec70c-be10-48d7-9bb6-7dbacd7f429d`, report `457d11a6-bc27-4246-9201-488a3b0e987e`, status `succeeded`,
+  final EvidenceAudit status `pass`. The separate candidate-HTS customs-broker review requirement remained true.
+- The same candidate/catalog/config/embedding/selected-ASIN inputs reproduced stable peer group
+  `4f71a8c5-2764-508d-94f8-106869b97375`. Prefilter/rerank/final were 300 / 40 / 20, with 477 accessories excluded,
+  79 unique peer reviews and 99 documents in the two small Chroma collections.
+- A first audit caught a user-fact-style hypothesis and triggered one bounded Operations correction. The accepted
+  plan had all seven launch-marketing fields, one Qwen model call, zero parse retries, and no user-fact hypothesis.
+  Deterministic audit also distinguishes a real low-price/high-end contradiction from a single comparison sentence.
+- ProductMarketAgent 18,964 ms and UserInsightAgent 13,091 ms overlapped. Accepted OperationsDecisionAgent 31,577 ms;
+  EvidenceAuditAgent 5,475 ms; workflow 97,965 ms; total HTTP E2E 111,347 ms. Matching/review reads were 6,854/33 ms;
+  SQLite 54 ms; RAG build/ingest/retrieve 8/2,331/659 ms; SQL statistics 2 ms.
+- All HTTP read views, evidence detail, Markdown, JSON, report support, 33 SSE events and 32-event replay passed.
+  Markdown contained no machine evidence IDs, peer-group UUID, ASIN narration, Demo/Scaffold wording, forbidden
+  candidate-review attribution, English risk-flag keys, or user-fact hypothesis.
+- Final deterministic gates: `pip check` clean, 194 passed and 3 opt-in skips, `compileall`, Ruff and Smoke Test all
+  returned zero.

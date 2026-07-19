@@ -1,8 +1,22 @@
 import sqlite3
+import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
 from app.background.tariff_data import build_tariff_database, parse_us_hts_table, write_normalized_jsonl
+
+
+def test_tariff_import_cli_help_runs_from_repository_root() -> None:
+    result = subprocess.run(
+        [sys.executable, "scripts/import_us_hts_tariffs.py", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--database-output" in result.stdout
 
 
 def test_parse_us_hts_table_and_build_serving_db(tmp_path: Path) -> None:

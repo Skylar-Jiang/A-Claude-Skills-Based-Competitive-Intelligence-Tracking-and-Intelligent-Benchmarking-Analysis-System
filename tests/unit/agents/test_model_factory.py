@@ -24,12 +24,19 @@ def test_deepseek_analysis_model_disables_reasoning_for_bounded_json(monkeypatch
 
 def test_qwen_models_disable_thinking_for_structured_output(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     captured: dict[str, object] = {}
+    client_options: dict[str, object] = {}
+    direct_client = object()
 
     def fake_chat_openai(**kwargs):  # type: ignore[no-untyped-def]
         captured.update(kwargs)
         return object()
 
+    def fake_http_client(**kwargs):  # type: ignore[no-untyped-def]
+        client_options.update(kwargs)
+        return direct_client
+
     monkeypatch.setattr(model_factory, "ChatOpenAI", fake_chat_openai)
+    monkeypatch.setattr(model_factory.httpx, "Client", fake_http_client)
     settings = Settings(
         _env_file=None,
         qwen_api_key="test-key",
@@ -39,6 +46,8 @@ def test_qwen_models_disable_thinking_for_structured_output(monkeypatch) -> None
     model_factory.create_operations_model(settings)
 
     assert captured["extra_body"] == {"enable_thinking": False}
+    assert captured["http_client"] is direct_client
+    assert client_options["trust_env"] is False
 
 
 def test_minimax_m3_disables_thinking_for_bounded_json(monkeypatch) -> None:  # type: ignore[no-untyped-def]

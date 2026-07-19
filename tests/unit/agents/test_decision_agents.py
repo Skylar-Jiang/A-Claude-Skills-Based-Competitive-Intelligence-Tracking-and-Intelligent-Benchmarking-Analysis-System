@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.runnables import RunnableSequence
 
@@ -10,7 +11,7 @@ from app.agents.operations_decision import OperationsDecisionAgent
 from app.background.contracts import BackgroundEvidence, BackgroundQuery, BackgroundResult
 from app.core.enums import AgentStatus, AuditStatus, DataOrigin, KnowledgeType
 from app.schemas.analysis import AuditResult, OperationPlan, ProductMarketAnalysis, UserInsight
-from app.schemas.common import Conclusion
+from app.schemas.common import Conclusion, DataGap
 from app.schemas.evidence import EvidenceReference
 from app.schemas.product import ProductProfile
 from app.skills.operation_content import OperationContentSkill
@@ -285,6 +286,40 @@ def test_audit_detects_semantic_positioning_conflict(demo_product: ProductProfil
     assert any("semantic_conflict" in issue for issue in audit.issues)
 
 
+def test_audit_allows_one_claim_to_contrast_premium_positioning_with_low_price_competition(
+    demo_product: ProductProfile,
+) -> None:
+    plan = OperationPlan(
+        status=AgentStatus.SUCCEEDED,
+        data_origin=DataOrigin.DEMO,
+        positioning="面向中高端品质市场。",
+        conclusions=[
+            Conclusion(
+                conclusion="依靠差异化支撑中高端溢价，避免与低价产品直接竞争。",
+                conclusion_type="recommendation",
+                confidence=0.8,
+                evidence_ids=["market-1"],
+            )
+        ],
+        evidence_ids=["market-1"],
+    )
+
+    audit = EvidenceAuditAgent().run(
+        EvidenceAuditAgentInput(product=demo_product, operation_plan=plan)
+    )
+
+    assert not any("semantic_conflict" in issue for issue in audit.issues)
+
+
+def test_model_missing_evidence_advisory_is_refuted_for_valid_non_uuid_id() -> None:
+    assert EvidenceAuditAgent._refuted_model_finding(
+        "证据 ID 'us-hts-8421210000-2026-01-01' 在 Evidence 数组中不存在。",
+        {"us-hts-8421210000-2026-01-01"},
+        {"us-hts-8421210000-2026-01-01"},
+        valid_evidence_less_hypotheses=False,
+    )
+
+
 def test_audit_rejects_mismatched_parallel_peer_scopes_and_peer_review_misattribution(
     demo_product: ProductProfile,
 ) -> None:
@@ -322,6 +357,67 @@ def test_audit_rejects_mismatched_parallel_peer_scopes_and_peer_review_misattrib
     assert any("agent_product_scope_mismatch" in issue for issue in audit.issues)
     assert any("peer_review_misattribution" in issue for issue in audit.issues)
     assert any("unlabeled_hypothesis" in issue for issue in audit.issues)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("marketing_objective", "当前商品反馈显示应强化易清洗卖点。"),
+        ("target_segments", ["当前商品反馈显示适合忙碌养宠家庭。"]),
+        ("value_propositions", ["当前商品反馈显示清洗更轻松。"]),
+        ("pricing_strategy", ["当前商品反馈显示可采用溢价策略。"]),
+        ("channel_strategy", ["当前商品反馈显示应优先投放短视频。"]),
+        ("messaging_strategy", ["当前商品反馈显示应强调低噪音。"]),
+        ("launch_actions", ["当前商品反馈显示应立即上市。"]),
+    ],
+)
+def test_audit_checks_peer_review_misattribution_in_every_marketing_strategy_field(
+    demo_product: ProductProfile,
+    field_name: str,
+    field_value: str | list[str],
+) -> None:
+    plan = OperationPlan(
+        status=AgentStatus.SUCCEEDED,
+        data_origin=DataOrigin.DEMO,
+        **{field_name: field_value},
+    )
+
+    audit = EvidenceAuditAgent().run(
+        EvidenceAuditAgentInput(product=demo_product, operation_plan=plan)
+    )
+
+    assert audit.status is AuditStatus.REJECTED
+    assert any("peer_review_misattribution" in issue for issue in audit.issues)
+
+
+def test_audit_rejects_user_fact_disguised_as_reasoned_hypothesis(
+    demo_product: ProductProfile,
+) -> None:
+    plan = OperationPlan(
+        status=AgentStatus.SUCCEEDED,
+        data_origin=DataOrigin.DEMO,
+        conclusions=[
+            Conclusion(
+                conclusion="待验证假设（非用户评论结论）：用户高度关注泵噪音。",
+                conclusion_type="reasoned_hypothesis",
+                confidence=0.4,
+                data_gaps=[
+                    DataGap(
+                        code="insufficient_evidence",
+                        field="peer_review_sample",
+                        reason="缺少支持该用户结论的评论证据。",
+                    )
+                ],
+            )
+        ],
+    )
+
+    audit = EvidenceAuditAgent().run(
+        EvidenceAuditAgentInput(product=demo_product, operation_plan=plan)
+    )
+
+    assert audit.status is AuditStatus.REJECTED
+    assert any("hypothesis_contains_user_fact" in issue for issue in audit.issues)
 
 
 def test_audit_accepts_two_decimal_rounding_of_structured_statistics(
@@ -370,7 +466,22 @@ def test_numeric_guard_preserves_valid_decimal_before_chinese_unit() -> None:
     assert OperationsDecisionAgent._sanitize_numeric_text("噪音低于18dB。", set()) == "噪音低于待验证数值dB。"
 
 
-def test_operations_agent_normalizes_positioning_object_without_retry(
+def test_audit_accepts_capacity_number_from_product_text(demo_product: ProductProfile) -> None:
+    product = demo_product.model_copy(update={"name": "3L Cordless Pet Fountain"})
+    plan = OperationPlan(
+        status=AgentStatus.SUCCEEDED,
+        data_origin=product.data_origin,
+        positioning="突出3L储水容量。",
+    )
+
+    audit = EvidenceAuditAgent().run(
+        EvidenceAuditAgentInput(product=product, operation_plan=plan)
+    )
+
+    assert not any("unverified_numeric_claim" in issue for issue in audit.issues)
+
+
+def test_operations_agent_retries_when_positioning_has_wrong_schema(
     demo_product: ProductProfile,
 ) -> None:
     product = demo_product.model_copy(update={"data_origin": DataOrigin.REAL})
@@ -386,8 +497,10 @@ def test_operations_agent_normalizes_positioning_object_without_retry(
     )
     model = FakeListChatModel(
         responses=[
-            '{"positioning":{"summary":"对象结构定位"},"evidence_ids":["market-1"],'
-            '"conclusions":[],"data_gaps":[],"next_steps":[]}'
+            '{"positioning":{"summary":"错误结构"},"evidence_ids":["market-1"],'
+            '"conclusions":[],"data_gaps":[],"next_steps":[]}',
+            '{"positioning":"面向目标用户的证据约束上市定位","evidence_ids":["market-1"],'
+            '"conclusions":[],"data_gaps":[],"next_steps":[]}',
         ]
     )
 
@@ -399,9 +512,189 @@ def test_operations_agent_normalizes_positioning_object_without_retry(
         )
     )
 
-    assert plan.positioning == "对象结构定位"
-    assert plan.model_call_count == 1
-    assert plan.parse_retry_count == 0
+    assert plan.positioning == "面向目标用户的证据约束上市定位"
+    assert plan.model_call_count == 2
+    assert plan.parse_retry_count == 1
+
+
+def test_operations_agent_retries_when_strategy_list_contains_objects(
+    demo_product: ProductProfile,
+) -> None:
+    product = demo_product.model_copy(update={"data_origin": DataOrigin.REAL})
+    market = ProductMarketAnalysis(
+        status=AgentStatus.SUCCEEDED,
+        data_origin=DataOrigin.REAL,
+        evidence_ids=["market-1"],
+    )
+    insight = UserInsight(
+        status=AgentStatus.SUCCEEDED,
+        data_origin=DataOrigin.REAL,
+        evidence_ids=["review-1"],
+    )
+    model = FakeListChatModel(
+        responses=[
+            '{"positioning":"证据约束定位","target_segments":[{"segment_name":"养宠家庭"}],'
+            '"evidence_ids":["market-1"],"conclusions":[],"data_gaps":[],"next_steps":[]}',
+            '{"positioning":"证据约束定位","target_segments":["养宠家庭"],'
+            '"evidence_ids":["market-1"],"conclusions":[],"data_gaps":[],"next_steps":[]}',
+        ]
+    )
+
+    plan = OperationsDecisionAgent(model=model).run(
+        OperationsDecisionAgentInput(
+            product=product,
+            product_market_analysis=market,
+            user_insight=insight,
+        )
+    )
+
+    assert plan.target_segments == ["养宠家庭"]
+    assert plan.model_call_count == 2
+    assert plan.parse_retry_count == 1
+
+
+def test_operations_agent_flattens_strategy_objects_only_after_bounded_retry(
+    demo_product: ProductProfile,
+) -> None:
+    product = demo_product.model_copy(update={"data_origin": DataOrigin.REAL})
+    response = (
+        '{"positioning":"证据约束定位",'
+        '"target_segments":{"primary":[{"segment_name":"养宠家庭",'
+        '"description":"重视清洗便利性","priority":"High",'
+        '"evidence_ids":["market-1"]}],"secondary":null},'
+        '"evidence_ids":["market-1"],"conclusions":[],"data_gaps":[],"next_steps":[]}'
+    )
+    model = FakeListChatModel(responses=[response, response])
+
+    plan = OperationsDecisionAgent(model=model).run(
+        OperationsDecisionAgentInput(
+            product=product,
+            product_market_analysis=ProductMarketAnalysis(
+                status=AgentStatus.SUCCEEDED,
+                data_origin=DataOrigin.REAL,
+                evidence_ids=["market-1"],
+            ),
+            user_insight=UserInsight(
+                status=AgentStatus.SUCCEEDED,
+                data_origin=DataOrigin.REAL,
+                evidence_ids=["review-1"],
+            ),
+        )
+    )
+
+    assert plan.target_segments == ["养宠家庭：重视清洗便利性"]
+    assert plan.model_call_count == 2
+    assert plan.parse_retry_count == 1
+    assert "market-1" not in plan.target_segments[0]
+    assert "priority" not in plan.target_segments[0]
+
+
+def test_operations_numeric_guard_preserves_product_capacity(
+    demo_product: ProductProfile,
+) -> None:
+    product = demo_product.model_copy(
+        update={"name": "3L Cordless Pet Fountain", "data_origin": DataOrigin.REAL}
+    )
+    context = OperationsDecisionAgentInput(
+        product=product,
+        product_market_analysis=ProductMarketAnalysis(
+            status=AgentStatus.SUCCEEDED,
+            data_origin=DataOrigin.REAL,
+            evidence_ids=["market-1"],
+        ),
+        user_insight=UserInsight(
+            status=AgentStatus.SUCCEEDED,
+            data_origin=DataOrigin.REAL,
+            evidence_ids=["review-1"],
+        ),
+    )
+
+    allowed = OperationsDecisionAgent._allowed_numbers(context)
+
+    assert "3" in allowed
+    assert OperationsDecisionAgent._sanitize_numeric_text("突出3L容量。", allowed) == "突出3L容量。"
+
+
+def test_operations_agent_drops_unsupported_quantified_marketing_targets(
+    demo_product: ProductProfile,
+) -> None:
+    product = demo_product.model_copy(update={"data_origin": DataOrigin.REAL})
+    model = FakeListChatModel(
+        responses=[
+            '{"positioning":"围绕易清洁体验建立差异化定位。",'
+            '"marketing_objective":"上市首月获取50条评价并维持4.8分。",'
+            '"launch_actions":["获取50条首发评价","完成清洗便利性测试"],'
+            '"evidence_ids":["market-1"],"conclusions":[],"data_gaps":[],"next_steps":[]}'
+        ]
+    )
+
+    plan = OperationsDecisionAgent(model=model).run(
+        OperationsDecisionAgentInput(
+            product=product,
+            product_market_analysis=ProductMarketAnalysis(
+                status=AgentStatus.SUCCEEDED,
+                data_origin=DataOrigin.REAL,
+                evidence_ids=["market-1"],
+            ),
+            user_insight=UserInsight(
+                status=AgentStatus.SUCCEEDED,
+                data_origin=DataOrigin.REAL,
+                evidence_ids=["review-1"],
+            ),
+        )
+    )
+
+    assert plan.marketing_objective == (
+        "围绕已验证的目标客群与价值主张建立首发认知；具体量化目标需由用户确认。"
+    )
+    assert plan.launch_actions == ["完成清洗便利性测试"]
+    assert "待验证数值" not in plan.model_dump_json()
+
+
+def test_operations_agent_preserves_structured_launch_marketing_strategy(
+    demo_product: ProductProfile,
+) -> None:
+    product = demo_product.model_copy(update={"data_origin": DataOrigin.REAL})
+    market = ProductMarketAnalysis(
+        status=AgentStatus.SUCCEEDED,
+        data_origin=DataOrigin.REAL,
+        evidence_ids=["market-1"],
+    )
+    insight = UserInsight(
+        status=AgentStatus.SUCCEEDED,
+        data_origin=DataOrigin.REAL,
+        evidence_ids=["review-1"],
+    )
+    model = FakeListChatModel(
+        responses=[
+            '{"positioning":"面向重视易清洁的养宠家庭，突出可拆洗差异化。",'
+            '"marketing_objective":"以可验证的易清洁体验建立首发认知。",'
+            '"target_segments":["重视日常维护效率的养宠家庭"],'
+            '"value_propositions":["把可拆洗结构转化为降低维护负担的核心价值"],'
+            '"pricing_strategy":["以同类价格带和目标成本共同校验首发价"],'
+            '"channel_strategy":["优先在可展示清洗过程的内容渠道验证转化"],'
+            '"messaging_strategy":["用清洗步骤演示支持易维护卖点"],'
+            '"launch_actions":["完成清洗便利性测试后再发布对应卖点"],'
+            '"evidence_ids":["market-1","review-1"],"conclusions":[],'
+            '"data_gaps":[],"next_steps":[]}'
+        ]
+    )
+
+    plan = OperationsDecisionAgent(model=model).run(
+        OperationsDecisionAgentInput(
+            product=product,
+            product_market_analysis=market,
+            user_insight=insight,
+        )
+    )
+
+    assert plan.marketing_objective.startswith("以可验证的易清洁体验")
+    assert plan.target_segments == ["重视日常维护效率的养宠家庭"]
+    assert plan.value_propositions
+    assert plan.pricing_strategy
+    assert plan.channel_strategy
+    assert plan.messaging_strategy
+    assert plan.launch_actions
 
 
 def test_operations_agent_preserves_tariff_numbers_from_background_context(

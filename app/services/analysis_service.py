@@ -440,5 +440,8 @@ class AnalysisService:
     def list_evidence(self, run_id: str) -> list[dict[str, object]]:
         return self.analyses.list_evidence(run_id)
 
+    def get_evidence(self, run_id: str, evidence_id: str) -> dict[str, object]:
+        return self.analyses.get_evidence(run_id, evidence_id)
+
     def get_report(self, report_id: str) -> FinalReport:
         return self.analyses.get_report(report_id)

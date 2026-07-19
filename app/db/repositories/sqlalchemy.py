@@ -274,6 +274,17 @@ class SqlAlchemyAnalysisRepository:
         )
         return [record.payload_json for record in self.session.scalars(statement).all()]
 
+    def get_evidence(self, run_id: str, evidence_id: str) -> dict[str, Any]:
+        self.get_run(run_id)
+        statement = select(EvidenceReferenceRecord).where(
+            EvidenceReferenceRecord.run_id == run_id,
+            EvidenceReferenceRecord.evidence_id == evidence_id,
+        )
+        record = self.session.scalar(statement)
+        if record is None:
+            raise ResourceNotFoundError("evidence", evidence_id)
+        return record.payload_json
+
     def persist_result(
         self,
         state: TradePilotState,

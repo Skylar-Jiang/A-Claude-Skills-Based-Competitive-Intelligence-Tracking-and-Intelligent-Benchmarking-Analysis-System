@@ -55,6 +55,20 @@ full dataset and does not read or modify the full Chroma index.
 The online `/analysis-runs` path only opens valid prepared caches. Missing or stale caches return
 `data_preparation_required`; online analysis never scans raw JSONL or rebuilds a cache.
 
+To audit source-derived terminal-product coverage without creating a global online classifier, run:
+
+```powershell
+python scripts\audit_catalog_product_types.py
+```
+
+The current prepared catalog contains 161,540 products and yields 493 source-resolved type buckets plus one explicit
+`__unresolved__` bucket for 9,387 records whose source category is missing. The ten entries in
+`config/real_product_smoke_manifest.yaml` are representative smoke inputs, not the complete type inventory. Type
+flags improve offline coverage inspection only: they do not manufacture reviews, bypass semantic peer thresholds or
+guarantee that every uploaded product has enough qualified peers.
+The ignored type-flag cache records both the catalog signature and explicit `source-leaf-v1` classifier version;
+either change invalidates only this audit cache, not catalog FTS, review offsets, or vector indexes.
+
 Peer matching is query-time direct-product matching, not a global product classifier. FTS recalls on product text;
 `categories` and price are weak scoring signals, and missing/different categories do not block a real same-terminal
 product. Acceptance thresholds and matcher version live in `config/peer_matching.yaml`. Products below the configured
@@ -93,6 +107,11 @@ consume the persisted `/events` SSE stream, which supports `Last-Event-ID` repla
 evidence, audit, metadata, Markdown, JSON, immutable report versions, evidence explanations, local section edits and
 rollback are available from the endpoints in `docs/api-contract.md`. Frontend integration and report-support rules are
 documented in `docs/frontend-integration.md` and `docs/report-support.md`.
+
+The customer-facing report is marketing-strategy-led: positioning, target segments, value propositions, pricing,
+channels, messages and launch actions follow the peer product/review analysis. Markdown shows numbered evidence links
+with readable product titles and Chinese support descriptions; UUIDs, ASINs and original source text remain available
+through the evidence-detail/JSON mapping rather than interrupting the narrative.
 
 Every HTTP request writes one allow-listed application log record with request ID, method, path, status and duration.
 Query strings, bodies, headers and credentials are never logged. Real Agent output uses an LCEL

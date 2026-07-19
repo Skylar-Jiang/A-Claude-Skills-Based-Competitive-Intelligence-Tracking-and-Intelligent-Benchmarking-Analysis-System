@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
-from app.background.tariff_data import (
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from app.background.tariff_data import (  # noqa: E402
     DEFAULT_SOURCE_NAME,
     DEFAULT_SOURCE_URL,
     build_tariff_database,

@@ -10,6 +10,7 @@ from app.rag.contracts import KnowledgeDocument
 from app.rag.in_memory import InMemoryKnowledgeStore
 from app.schemas.analysis import AuditResult, OperationPlan, ProductMarketAnalysis, UserInsight
 from app.schemas.common import DataGap
+from app.schemas.evidence import EvidenceReference
 from app.schemas.product import ProductCreate, ProductProfile
 from app.statistics.contracts import StatisticsResult
 from app.workflows.graph import TradePilotWorkflow
@@ -177,6 +178,54 @@ def test_real_new_product_workflow_retrieves_peer_group_evidence() -> None:
     peer_review = next(item for item in result.rag_evidence if item.evidence_id == "peer-review-evidence")
     assert peer_review.metadata["candidate_product_id"] == "product-1"
     assert any(item.evidence_type == "sql_statistics" for item in result.rag_evidence)
+
+
+def test_peer_group_filter_keeps_product_background_evidence() -> None:
+    store = InMemoryKnowledgeStore()
+    store.ingest(
+        [
+            KnowledgeDocument(
+                document_id="selected-peer-evidence",
+                product_id="listed-peer-1",
+                knowledge_type=KnowledgeType.PRODUCT_KNOWLEDGE,
+                content="A selected peer product.",
+                source_name="selected peer",
+                data_origin=DataOrigin.REAL,
+                metadata={
+                    "peer_group_id": "fountain-group",
+                    "evidence_scope": "peer_product",
+                    "parent_asin": "PEER-A",
+                },
+            )
+        ]
+    )
+    background = EvidenceReference(
+        evidence_id="us-hts-8421210000-2026-01-01",
+        evidence_type="product_background",
+        knowledge_type=KnowledgeType.PRODUCT_KNOWLEDGE,
+        source_name="USITC Harmonized Tariff Schedule",
+        excerpt="Candidate HTS 8421210000.",
+        data_origin=DataOrigin.REAL,
+        metadata={
+            "source_type": "product_background_provider",
+            "evidence_scope": "product_background",
+        },
+    )
+    state = initial_state().model_copy(
+        update={
+            "data_mode": DataMode.REAL,
+            "peer_group_id": "fountain-group",
+            "retrieval_scope": RetrievalScope.PEER_GROUP,
+            "selected_parent_asins": ["PEER-A"],
+            "background_evidence": [background],
+        }
+    )
+
+    result = TradePilotState.model_validate(TradePilotWorkflow(knowledge_store=store).invoke(state))
+
+    evidence_ids = {item.evidence_id for item in result.rag_evidence}
+    assert "selected-peer-evidence" in evidence_ids
+    assert "us-hts-8421210000-2026-01-01" in evidence_ids
 
 
 def test_peer_matching_data_gap_reaches_statistics_and_analysis_agents() -> None:

@@ -51,6 +51,10 @@ def test_frontend_read_endpoints_are_repository_backed_and_typed(tmp_path: Path)
         agents = client.get(f"/api/v1/analysis-runs/{run_id}/agents")
         peers = client.get(f"/api/v1/analysis-runs/{run_id}/peers")
         evidence = client.get(f"/api/v1/analysis-runs/{run_id}/evidence")
+        first_evidence_id = evidence.json()["data"]["evidence"][0]["evidence_id"]
+        evidence_detail = client.get(
+            f"/api/v1/analysis-runs/{run_id}/evidence/{first_evidence_id}"
+        )
         audit = client.get(f"/api/v1/analysis-runs/{run_id}/audit")
         workflow = client.get("/api/v1/workflow/metadata")
 
@@ -89,6 +93,8 @@ def test_frontend_read_endpoints_are_repository_backed_and_typed(tmp_path: Path)
     }
     assert evidence.json()["data"]["run_id"] == run_id
     assert isinstance(evidence.json()["data"]["evidence"], list)
+    assert evidence_detail.status_code == 200
+    assert evidence_detail.json()["data"]["evidence"]["evidence_id"] == first_evidence_id
     assert audit.json()["data"]["audit"]["status"] in {"pass", "warning", "rejected"}
 
 

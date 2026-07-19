@@ -38,6 +38,15 @@ PEER_ATTRIBUTION_FORBIDDEN = (
     "该商品用户普遍认为",
     "当前商品差评",
 )
+HYPOTHESIS_USER_FACT_PHRASES = (
+    "用户普遍",
+    "用户高度关注",
+    "多数用户",
+    "大多数用户",
+    "用户反馈",
+    "评论显示",
+    "评论表明",
+)
 NUMERIC_SOURCE_PATTERN = r"(?<![A-Za-z0-9_.-])\d+(?:\.\d+)?%?(?![A-Za-z0-9_.-])"
 NUMERIC_CLAIM_PATTERN = r"(?<![A-Za-z0-9_.-])\d+(?:\.\d+)?%?"
 AUDIT_SYSTEM_PROMPT = """
@@ -311,6 +320,14 @@ class EvidenceAuditAgent(BaseScaffoldAgent[EvidenceAuditAgentInput, AuditResult]
                 blocking.append(
                     f"conclusion[{index}].unlabeled_hypothesis: Prefix the attribute-based inference with 待验证假设."
                 )
+            if conclusion.conclusion_type == "reasoned_hypothesis" and any(
+                phrase in conclusion.conclusion for phrase in HYPOTHESIS_USER_FACT_PHRASES
+            ):
+                blocking.append(
+                    f"conclusion[{index}].hypothesis_contains_user_fact: A product-attribute hypothesis cannot "
+                    "state an observed user/review conclusion; bind peer-review evidence and use an "
+                    "evidence-summary type, or rewrite it as a non-user prelaunch validation."
+                )
 
         if context.product.target_market and context.product.target_market.casefold() not in plan_text:
             warnings.append(
@@ -363,6 +380,16 @@ class EvidenceAuditAgent(BaseScaffoldAgent[EvidenceAuditAgentInput, AuditResult]
             allowed_payload["background_context"] = context.background_context.model_dump(mode="json")
         allowed_text = json.dumps(allowed_payload, ensure_ascii=False, default=str)
         allowed_numbers = set(re.findall(NUMERIC_SOURCE_PATTERN, allowed_text))
+        product_claim_source = context.product.model_dump(
+            mode="json",
+            exclude={"product_id", "file_references", "data_gaps"},
+        )
+        allowed_numbers.update(
+            re.findall(
+                NUMERIC_CLAIM_PATTERN,
+                json.dumps(product_claim_source, ensure_ascii=False, default=str),
+            )
+        )
         for value in list(allowed_numbers):
             try:
                 rounded = Decimal(value.removesuffix("%")).quantize(Decimal("0.01"))
@@ -432,6 +459,8 @@ class EvidenceAuditAgent(BaseScaffoldAgent[EvidenceAuditAgentInput, AuditResult]
         )
         if not missing_claim:
             return False
+        if any(evidence_id.casefold() in normalized for evidence_id in valid_evidence_ids):
+            return True
         if uuid_references and uuid_references.issubset(normalized_valid_ids):
             return True
         statistics_provenance_claim = "statistics" in normalized and (
@@ -452,8 +481,18 @@ class EvidenceAuditAgent(BaseScaffoldAgent[EvidenceAuditAgentInput, AuditResult]
         messages: list[str] = []
         evidence_ids: list[str] = []
         for left_terms, right_terms in CONFLICT_PAIRS:
-            left_records = [record for record in records if any(term in record[1].casefold() for term in left_terms)]
-            right_records = [record for record in records if any(term in record[1].casefold() for term in right_terms)]
+            left_records = [
+                record
+                for record in records
+                if any(term in record[1].casefold() for term in left_terms)
+                and not any(term in record[1].casefold() for term in right_terms)
+            ]
+            right_records = [
+                record
+                for record in records
+                if any(term in record[1].casefold() for term in right_terms)
+                and not any(term in record[1].casefold() for term in left_terms)
+            ]
             if left_records and right_records:
                 left_labels = ", ".join(record[0] for record in left_records)
                 right_labels = ", ".join(record[0] for record in right_records)
@@ -485,7 +524,22 @@ class EvidenceAuditAgent(BaseScaffoldAgent[EvidenceAuditAgentInput, AuditResult]
         context: EvidenceAuditAgentInput,
     ) -> list[tuple[str, str, str | None]]:
         plan = context.operation_plan
-        values: list[tuple[str, str, str | None]] = [("positioning", plan.positioning, None)]
+        values: list[tuple[str, str, str | None]] = [
+            ("positioning", plan.positioning, None),
+            ("marketing_objective", plan.marketing_objective, None),
+        ]
+        for field_name in (
+            "target_segments",
+            "value_propositions",
+            "pricing_strategy",
+            "channel_strategy",
+            "messaging_strategy",
+            "launch_actions",
+        ):
+            values.extend(
+                (f"{field_name}[{index}]", item, None)
+                for index, item in enumerate(getattr(plan, field_name))
+            )
         values.extend(
             (f"conclusion[{index}]", conclusion.conclusion, conclusion.conclusion_type)
             for index, conclusion in enumerate(plan.conclusions)

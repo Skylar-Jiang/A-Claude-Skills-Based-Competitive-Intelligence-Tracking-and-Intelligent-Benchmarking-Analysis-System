@@ -89,6 +89,13 @@ class UserInsight(ScaffoldAgentOutput):
 
 class OperationPlan(ScaffoldAgentOutput):
     positioning: str = ""
+    marketing_objective: str = ""
+    target_segments: list[str] = Field(default_factory=list)
+    value_propositions: list[str] = Field(default_factory=list)
+    pricing_strategy: list[str] = Field(default_factory=list)
+    channel_strategy: list[str] = Field(default_factory=list)
+    messaging_strategy: list[str] = Field(default_factory=list)
+    launch_actions: list[str] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)
     peer_group_id: str | None = None
     selected_parent_asins: list[str] = Field(default_factory=list)

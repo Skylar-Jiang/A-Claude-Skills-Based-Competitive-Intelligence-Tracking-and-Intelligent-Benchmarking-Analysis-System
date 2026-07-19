@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Any
 
+import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
@@ -137,6 +138,7 @@ def _create_qwen_model(settings: Settings, model_name: str) -> BaseChatModel:
         max_tokens=settings.model_max_tokens,
         model_kwargs={"response_format": {"type": "json_object"}},
         extra_body={"enable_thinking": False},
+        http_client=httpx.Client(trust_env=False),
     )
 
 
