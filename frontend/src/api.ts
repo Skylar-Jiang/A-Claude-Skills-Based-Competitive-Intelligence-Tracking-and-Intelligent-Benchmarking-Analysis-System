@@ -105,6 +105,19 @@ export interface AuditResult {
   manual_review_required: boolean
 }
 
+export interface EvidenceReference {
+  evidence_id: string
+  evidence_type: string
+  knowledge_type: string
+  source_name: string
+  source_uri: string | null
+  excerpt: string
+  published_at: string | null
+  data_origin: string
+  is_demo: boolean
+  metadata: Record<string, unknown>
+}
+
 export interface ReportView {
   report_id: string
   run_id: string
@@ -166,6 +179,12 @@ export const api = {
   timeline: (runId: string) => request<TimelineView>(`/analysis-runs/${runId}/timeline`),
   agents: (runId: string) =>
     request<{ run_id: string; agents: AgentView[] }>(`/analysis-runs/${runId}/agents`),
+  evidence: (runId: string) =>
+    request<{ run_id: string; evidence: EvidenceReference[] }>(`/analysis-runs/${runId}/evidence`),
+  evidenceDetail: (runId: string, evidenceId: string) =>
+    request<{ run_id: string; evidence: EvidenceReference }>(
+      `/analysis-runs/${runId}/evidence/${encodeURIComponent(evidenceId)}`,
+    ),
   audit: (runId: string) =>
     request<{ run_id: string; audit: AuditResult | null }>(`/analysis-runs/${runId}/audit`),
   report: (reportId: string) => request<ReportView>(`/reports/${reportId}`),

@@ -2,23 +2,31 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import {
   ArrowRight,
+  BookOpenText,
   ChartLineUp,
+  ChatCircleText,
   CheckCircle,
   Clock,
   Compass,
+  CurrencyDollar,
   Database,
   FileText,
+  Fingerprint,
   FlowArrow,
   Globe,
   Lightning,
   ListChecks,
+  Megaphone,
   Package,
   Play,
   Pulse,
   Receipt,
+  RocketLaunch,
   Scales,
   ShieldCheck,
   SidebarSimple,
+  Sparkle,
+  Target,
   UploadSimple,
   UsersThree,
   WarningCircle,
@@ -30,6 +38,7 @@ import {
   api,
   type AgentView,
   type AuditResult,
+  type EvidenceReference,
   type ReportView,
   type RunStage,
   type RunStatus,
@@ -37,7 +46,42 @@ import {
 } from './api'
 import { productCategoryOptions, targetMarketOptions } from './catalogOptions'
 
-type PageKey = 'workspace' | 'agents' | 'tariff' | 'audit' | 'report'
+type PageKey = 'workspace' | 'agents' | 'strategy' | 'evidence' | 'tariff' | 'audit' | 'report'
+
+type MarketingStrategy = {
+  positioning?: string
+  marketing_objective?: string
+  target_segments?: string[]
+  value_propositions?: string[]
+  pricing_strategy?: string[]
+  channel_strategy?: string[]
+  messaging_strategy?: string[]
+  launch_actions?: string[]
+}
+
+type ExecutiveSummary = {
+  manual_review_required?: boolean
+  evidence_audit_manual_review_required?: boolean
+  customs_broker_review_required?: boolean
+  evidence_count?: number
+  limitation_count?: number
+}
+
+type EvidenceIndexItem = {
+  display_number?: number
+  display_label?: string
+  display_title?: string
+  evidence_type_label?: string
+  support_summary?: string
+  detail_path?: string
+  evidence_id: string
+  knowledge_type?: string
+  source_name?: string
+  source_uri?: string | null
+  excerpt?: string
+  data_origin?: string
+  metadata?: Record<string, unknown>
+}
 
 type TariffEvidence = {
   evidence_id?: string
@@ -146,6 +190,8 @@ const agentDefinitions = [
 const navigation: Array<{ key: PageKey; label: string; caption: string; icon: typeof Lightning }> = [
   { key: 'workspace', label: '任务创建', caption: '真实商品分析', icon: Lightning },
   { key: 'agents', label: 'Agent 协作', caption: '四角色流程', icon: FlowArrow },
+  { key: 'strategy', label: '营销策略', caption: '定位与上市动作', icon: Megaphone },
+  { key: 'evidence', label: '证据中心', caption: '来源与原文详情', icon: Fingerprint },
   { key: 'tariff', label: '关税合规', caption: '美国 HTS 证据', icon: Receipt },
   { key: 'audit', label: '证据审校', caption: '风险与护栏', icon: ShieldCheck },
   { key: 'report', label: '决策报告', caption: 'Markdown 输出', icon: FileText },
@@ -198,6 +244,18 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null
+}
+
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function asEvidenceIndex(value: unknown): EvidenceIndexItem[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is EvidenceIndexItem => {
+    const record = asRecord(item)
+    return typeof record?.evidence_id === 'string'
+  })
 }
 
 function tariffSections(report: ReportView | null) {
@@ -269,6 +327,11 @@ function App() {
   const [timeline, setTimeline] = useState<RunStage[]>([])
   const [agents, setAgents] = useState<AgentView[]>([])
   const [audit, setAudit] = useState<AuditResult | null>(null)
+  const [evidence, setEvidence] = useState<EvidenceReference[]>([])
+  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceReference | null>(null)
+  const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null)
+  const [evidenceBusy, setEvidenceBusy] = useState(false)
+  const [evidenceError, setEvidenceError] = useState('')
   const [report, setReport] = useState<ReportView | null>(null)
   const [markdown, setMarkdown] = useState('')
   const [busy, setBusy] = useState(false)
@@ -321,13 +384,15 @@ function App() {
 
         if (terminalStatuses.includes(status.status)) {
           if (status.report_id) {
-            const [reportData, reportMarkdown] = await Promise.all([
+            const [reportData, reportMarkdown, evidenceData] = await Promise.all([
               api.report(status.report_id),
               api.markdown(status.report_id),
+              api.evidence(runId),
             ])
             if (active) {
               setReport(reportData)
               setMarkdown(reportMarkdown)
+              setEvidence(evidenceData.evidence)
             }
           }
           if (status.error?.message) setError(status.error.message)
@@ -358,14 +423,56 @@ function App() {
   const auditStatus = audit?.status || (runStatus === 'manual_review' ? 'warning' : 'pending')
   const currentStageName = workflow?.nodes.find((node) => node.node_name === currentNode)?.display_name || currentNode
   const { snapshot: tariffSnapshot, impact: tariffImpact } = tariffSections(report)
+  const marketingStrategy = asRecord(report?.sections.launch_marketing_strategy) as MarketingStrategy | null
+  const executiveSummary = asRecord(report?.sections.executive_summary) as ExecutiveSummary | null
+  const evidenceIndex = asEvidenceIndex(
+    report?.sections.evidence_index
+      || asRecord(report?.sections.data_limitations_and_evidence_index)?.evidence_index,
+  )
+  const displayEvidence = evidenceIndex.length ? evidenceIndex : evidence.map((item, index) => ({
+    display_number: index + 1,
+    display_label: `证据${index + 1}`,
+    display_title: item.source_name,
+    evidence_type_label: item.knowledge_type === 'review_insight' ? '同类商品真实评论' : '真实资料',
+    support_summary: item.excerpt,
+    evidence_id: item.evidence_id,
+    knowledge_type: item.knowledge_type,
+    source_name: item.source_name,
+    source_uri: item.source_uri,
+    excerpt: item.excerpt,
+    data_origin: item.data_origin,
+    metadata: item.metadata,
+  }))
+  const selectedEvidenceIndex = displayEvidence.find((item) => item.evidence_id === selectedEvidenceId)
+  const evidenceAuditReviewRequired = executiveSummary?.evidence_audit_manual_review_required
+    ?? audit?.manual_review_required
+    ?? false
+  const customsBrokerReviewRequired = executiveSummary?.customs_broker_review_required ?? false
   const tariffProfile = tariffImpact?.primary_tariff_profile || null
   const tariffEvidence = tariffSnapshot?.tariff_evidence || []
   const tariffGaps = tariffSnapshot?.data_gaps || []
 
   const navigate = (target: PageKey) => {
-    window.location.hash = target
+    window.location.assign(`#${target}`)
     setPage(target)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const showEvidence = async (evidenceId: string) => {
+    if (!runId || evidenceBusy) return
+    setSelectedEvidenceId(evidenceId)
+    setEvidenceBusy(true)
+    setEvidenceError('')
+    if (page !== 'evidence') navigate('evidence')
+    try {
+      const result = await api.evidenceDetail(runId, evidenceId)
+      setSelectedEvidence(result.evidence)
+    } catch (detailError) {
+      setSelectedEvidence(null)
+      setEvidenceError(detailError instanceof Error ? detailError.message : '证据详情读取失败。')
+    } finally {
+      setEvidenceBusy(false)
+    }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -378,6 +485,10 @@ function App() {
     setTimeline([])
     setAgents([])
     setAudit(null)
+    setEvidence([])
+    setSelectedEvidence(null)
+    setSelectedEvidenceId(null)
+    setEvidenceError('')
     setReport(null)
     setMarkdown('')
 
@@ -598,9 +709,14 @@ function App() {
             )
           })}
           <div className="flow-line line-down"><i /></div>
-          <button className={`report-node status-${report ? 'succeeded' : 'pending'}`} onClick={() => navigate('report')}>
-            <FileText weight="duotone" /><span><small>OUTPUT</small><strong>生成 Markdown 决策报告</strong></span><ArrowRight weight="bold" />
-          </button>
+          <div className="output-nodes">
+            <button className={`report-node status-${report ? 'succeeded' : 'pending'}`} onClick={() => navigate('strategy')}>
+              <Megaphone weight="duotone" /><span><small>STRATEGY</small><strong>查看上市营销策略</strong></span><ArrowRight weight="bold" />
+            </button>
+            <button className={`report-node status-${report ? 'succeeded' : 'pending'}`} onClick={() => navigate('report')}>
+              <FileText weight="duotone" /><span><small>REPORT</small><strong>查看 Markdown 决策报告</strong></span><ArrowRight weight="bold" />
+            </button>
+          </div>
         </div>
       </section>
 
@@ -618,12 +734,122 @@ function App() {
     </div>
   )
 
+  const renderStrategy = () => {
+    const strategyCards = [
+      { key: 'segments', label: '目标客群', caption: 'WHO', items: asStringList(marketingStrategy?.target_segments), icon: UsersThree, tone: 'pink' },
+      { key: 'value', label: '核心价值主张', caption: 'VALUE', items: asStringList(marketingStrategy?.value_propositions), icon: Sparkle, tone: 'white' },
+      { key: 'pricing', label: '定价策略', caption: 'PRICE', items: asStringList(marketingStrategy?.pricing_strategy), icon: CurrencyDollar, tone: 'brown' },
+      { key: 'channel', label: '渠道策略', caption: 'CHANNEL', items: asStringList(marketingStrategy?.channel_strategy), icon: Target, tone: 'blue' },
+      { key: 'message', label: '传播信息策略', caption: 'MESSAGE', items: asStringList(marketingStrategy?.messaging_strategy), icon: ChatCircleText, tone: 'pink' },
+      { key: 'actions', label: '上市执行动作', caption: 'ACTION', items: asStringList(marketingStrategy?.launch_actions), icon: RocketLaunch, tone: 'brown' },
+    ]
+    const strategyReady = Boolean(
+      marketingStrategy?.marketing_objective
+      || marketingStrategy?.positioning
+      || strategyCards.some((card) => card.items.length),
+    )
+
+    return (
+      <div className="page-view page-strategy">
+        <PageHeader
+          eyebrow="LAUNCH MARKETING SYSTEM"
+          title="新品上市营销策略"
+          description="把同类商品与评论证据转化为可执行的客群、价值、定价、渠道、传播和上市动作。"
+          action={<span className={`status-pill ${strategyReady ? 'status-pass' : 'status-pending'}`}>{statusIcon(strategyReady ? 'pass' : 'pending')}{strategyReady ? '策略已生成' : '等待决策 Agent'}</span>}
+        />
+        {strategyReady ? (
+          <>
+            <section className="strategy-hero glass-panel">
+              <div className="strategy-orbit" aria-hidden="true"><Megaphone weight="duotone" /><i /><i /></div>
+              <div className="strategy-hero-copy">
+                <span className="eyebrow">MARKETING OBJECTIVE</span>
+                <h2>{marketingStrategy?.marketing_objective || '围绕已验证的目标客群与价值主张建立首发认知。'}</h2>
+                <div className="positioning-statement"><Compass weight="duotone" /><div><small>市场定位</small><p>{marketingStrategy?.positioning || '当前证据不足，暂未形成明确市场定位。'}</p></div></div>
+              </div>
+              <div className="strategy-signal"><span>STRATEGY SIGNAL</span><strong>{strategyCards.reduce((total, card) => total + card.items.length, 0)}</strong><small>条证据约束策略</small></div>
+            </section>
+            <section className="strategy-grid">
+              {strategyCards.map((card, index) => {
+                const Icon = card.icon
+                return (
+                  <article className={`glass-panel strategy-card tone-${card.tone}`} key={card.key}>
+                    <div className="strategy-card-head"><span><Icon weight="duotone" /></span><small>{String(index + 1).padStart(2, '0')} · {card.caption}</small></div>
+                    <h2>{card.label}</h2>
+                    {card.items.length ? <ul>{card.items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}><i />{item}</li>)}</ul> : <p className="strategy-empty">证据或输入不足，暂不生成确定性策略。</p>}
+                  </article>
+                )
+              })}
+            </section>
+            <section className="strategy-evidence-cta glass-panel"><div><BookOpenText weight="duotone" /><span><strong>策略结论可追溯</strong><small>通过友好编号查看支持每条结论的真实商品、评论和税则资料。</small></span></div><button className="compact-button" onClick={() => navigate('evidence')}>打开证据中心 <ArrowRight weight="bold" /></button></section>
+          </>
+        ) : (
+          <section className="report-placeholder glass-panel">
+            <div className="placeholder-orbit"><Megaphone weight="thin" /><span /><span /></div>
+            <span className="eyebrow">STRATEGY STANDBY</span>
+            <h2>运营决策 Agent 将生成完整营销策略</h2>
+            <p>新版策略包含营销目标、市场定位、目标客群、价值主张、定价、渠道、传播信息和上市动作。</p>
+            <button className="primary-button compact" onClick={() => navigate(runId ? 'agents' : 'workspace')}>{runId ? '查看 Agent 进度' : '创建分析任务'}<ArrowRight weight="bold" /></button>
+          </section>
+        )}
+      </div>
+    )
+  }
+
+  const renderEvidence = () => (
+    <div className="page-view page-evidence">
+      <PageHeader
+        eyebrow="TRACEABLE EVIDENCE"
+        title="证据中心"
+        description="使用面向用户的证据编号浏览真实商品、评论、统计和关税资料；机器 ID 仅保留在详情中用于审计。"
+        action={<span className={`status-pill ${displayEvidence.length ? 'status-pass' : 'status-pending'}`}><Fingerprint weight="fill" />{displayEvidence.length} 条证据</span>}
+      />
+      {displayEvidence.length ? (
+        <section className="evidence-workbench">
+          <div className="glass-panel evidence-list-panel">
+            <div className="section-title"><div><span className="eyebrow">EVIDENCE INDEX</span><h2>报告证据索引</h2></div><span>{displayEvidence.length} ITEMS</span></div>
+            <div className="evidence-list">
+              {displayEvidence.map((item) => (
+                <button
+                  className={selectedEvidenceId === item.evidence_id ? 'active' : ''}
+                  key={item.evidence_id}
+                  onClick={() => void showEvidence(item.evidence_id)}
+                  aria-pressed={selectedEvidenceId === item.evidence_id}
+                >
+                  <span className="evidence-number">{item.display_label || `证据${item.display_number || ''}`}</span>
+                  <span className="evidence-list-copy"><strong>{item.display_title || item.source_name || '未命名证据'}</strong><small>{item.evidence_type_label || item.knowledge_type || '真实资料'}</small><p>{item.support_summary || item.excerpt || '点击查看原始证据详情。'}</p></span>
+                  <ArrowRight weight="bold" />
+                </button>
+              ))}
+            </div>
+          </div>
+          <article className="glass-panel evidence-detail-panel" aria-live="polite">
+            {evidenceBusy ? <div className="evidence-detail-empty"><Pulse className="spin" weight="bold" /><h2>正在读取原始证据</h2><p>从持久化证据仓库加载完整来源与元数据。</p></div> : evidenceError ? <div className="evidence-detail-empty error"><WarningCircle weight="thin" /><h2>证据读取失败</h2><p>{evidenceError}</p></div> : selectedEvidence ? (
+              <>
+                <div className="evidence-detail-head"><span><Fingerprint weight="duotone" /></span><div><small>{selectedEvidenceIndex?.display_label || 'EVIDENCE DETAIL'}</small><h2>{selectedEvidenceIndex?.display_title || selectedEvidence.source_name}</h2><p>{selectedEvidenceIndex?.evidence_type_label || selectedEvidence.knowledge_type}</p></div></div>
+                <dl className="evidence-detail-meta">
+                  <div><dt>数据来源</dt><dd>{selectedEvidence.source_name}</dd></div>
+                  <div><dt>知识类型</dt><dd>{selectedEvidence.knowledge_type}</dd></div>
+                  <div><dt>数据模式</dt><dd>{selectedEvidence.data_origin.toUpperCase()}</dd></div>
+                </dl>
+                <div className="evidence-excerpt"><span className="eyebrow">ORIGINAL EVIDENCE</span><p>{selectedEvidence.excerpt || '原始摘录为空。'}</p></div>
+                {selectedEvidence.source_uri && (/^https?:\/\//i.test(selectedEvidence.source_uri) ? <a className="evidence-source-link" href={selectedEvidence.source_uri} target="_blank" rel="noreferrer">打开原始来源 <ArrowRight weight="bold" /></a> : <div className="evidence-machine-field"><span>来源位置</span><code>{selectedEvidence.source_uri}</code></div>)}
+                <details className="evidence-metadata"><summary>查看机器审计字段</summary><div><span>evidence_id</span><code>{selectedEvidence.evidence_id}</code><span>metadata</span><pre>{JSON.stringify(selectedEvidence.metadata, null, 2)}</pre></div></details>
+              </>
+            ) : <div className="evidence-detail-empty"><Fingerprint weight="thin" /><h2>选择一条证据</h2><p>左侧使用友好编号展示来源，点击后可查看原始摘录和机器审计字段。</p></div>}
+          </article>
+        </section>
+      ) : (
+        <section className="report-placeholder glass-panel"><div className="placeholder-orbit"><Fingerprint weight="thin" /><span /><span /></div><span className="eyebrow">EVIDENCE STANDBY</span><h2>报告生成后会建立证据索引</h2><p>证据中心只展示后端真实持久化的证据，不生成示例数据或模拟来源。</p><button className="primary-button compact" onClick={() => navigate(runId ? 'agents' : 'workspace')}>{runId ? '查看 Agent 进度' : '创建分析任务'}<ArrowRight weight="bold" /></button></section>
+      )}
+    </div>
+  )
+
   const renderAudit = () => (
     <div className="page-view page-audit">
       <PageHeader
         eyebrow="EVIDENCE GOVERNANCE"
         title="证据审校中心"
-        description="审校 Agent 对范围、数字、引用和假设进行最终把关，warning 是提醒，不等同于系统失败。"
+        description="区分证据审校与报关归类两类复核：前者决定结论可信度，后者是正式进口前的业务合规门禁。"
         action={<span className={`status-pill status-${auditStatus}`}>{statusIcon(auditStatus)}{statusText(auditStatus)}</span>}
       />
       <section className="audit-layout">
@@ -631,7 +857,7 @@ function App() {
           <div className={`verdict-symbol audit-${auditStatus}`}>{statusIcon(auditStatus)}</div>
           <span className="eyebrow">AUDIT VERDICT</span>
           <h2>{statusText(auditStatus)}</h2>
-          <p>{audit ? (audit.manual_review_required ? '当前报告需要人工确认后再用于业务决策。' : '审校已经完成，请结合问题清单与未决事项阅读结论。') : '完成四个 Agent 的真实分析后，这里会展示审校结论。'}</p>
+          <p>{audit ? (evidenceAuditReviewRequired ? '证据审校发现需要人工确认的问题，请结合问题清单修正结论。' : '证据审校已经完成；报关复核状态会在下方单独展示。') : '完成四个 Agent 的真实分析后，这里会展示审校结论。'}</p>
           <dl>
             <div><dt>问题</dt><dd>{audit?.issues.length || 0}</dd></div>
             <div><dt>冲突证据</dt><dd>{audit?.conflicting_evidence_ids.length || 0}</dd></div>
@@ -642,6 +868,10 @@ function App() {
           <div className="section-title"><div><span className="eyebrow">REVIEW FINDINGS</span><h2>审校问题与建议</h2></div><ListChecks weight="duotone" /></div>
           {audit?.issues.length ? <ul className="audit-issues">{audit.issues.map((issue, index) => <li key={`${issue}-${index}`}><span>{String(index + 1).padStart(2, '0')}</span><p>{issue}</p></li>)}</ul> : <div className="empty-state"><ShieldCheck weight="thin" /><h3>{audit ? '没有发现审校问题' : '等待审校结果'}</h3><p>{audit ? '当前证据链未触发问题项。' : '先创建真实分析任务，审校 Agent 会在决策完成后运行。'}</p></div>}
         </div>
+      </section>
+      <section className="review-boundary-grid" aria-label="人工复核边界">
+        <article className={`glass-panel review-boundary-card ${evidenceAuditReviewRequired ? 'requires-review' : 'cleared'}`}><span><ShieldCheck weight="duotone" /></span><div><small>EVIDENCE AUDIT</small><h2>证据审校复核</h2><p>检查事实范围、数字、引用和假设标签，影响报告结论是否可用。</p></div><strong>{evidenceAuditReviewRequired ? '需要复核' : audit ? '已完成' : '待审校'}</strong></article>
+        <article className={`glass-panel review-boundary-card ${customsBrokerReviewRequired ? 'requires-review' : 'cleared'}`}><span><Scales weight="duotone" /></span><div><small>CUSTOMS CLASSIFICATION</small><h2>报关归类复核</h2><p>候选 HTS 和税率用于前期测算，正式进口前仍需报关行确认。</p></div><strong>{customsBrokerReviewRequired ? '需要复核' : report ? '无需额外复核' : '等待税则'}</strong></article>
       </section>
       <section className="guardrail-panel glass-panel">
         <div className="section-title"><div><span className="eyebrow">DECISION GUARDRAILS</span><h2>四条决策护栏</h2></div><Database weight="duotone" /></div>
@@ -736,7 +966,18 @@ function App() {
       {markdown ? (
         <section className="report-shell glass-panel">
           <div className="report-toolbar"><div><span>REPORT ID</span><strong>{report?.report_id.toUpperCase()}</strong></div><div><span>审校状态</span><strong>{statusText(report?.audit_status)}</strong></div><div><span>格式</span><strong>MARKDOWN</strong></div></div>
-          <article className="report-paper"><ReactMarkdown skipHtml>{markdown}</ReactMarkdown></article>
+          <article className="report-paper"><ReactMarkdown
+            skipHtml
+            components={{
+              a: ({ href, children }) => {
+                const match = href?.match(/\/analysis-runs\/[^/]+\/evidence\/(.+)$/)
+                if (match) {
+                  return <a href="#evidence" onClick={(event) => { event.preventDefault(); void showEvidence(decodeURIComponent(match[1])) }}>{children}</a>
+                }
+                return <a href={href} target="_blank" rel="noreferrer">{children}</a>
+              },
+            }}
+          >{markdown}</ReactMarkdown></article>
           {report?.disclaimer && <div className="report-disclaimer"><WarningCircle weight="fill" /><span>{report.disclaimer}</span></div>}
         </section>
       ) : (
@@ -744,7 +985,7 @@ function App() {
           <div className="placeholder-orbit"><FileText weight="thin" /><span /><span /></div>
           <span className="eyebrow">REPORT STANDBY</span>
           <h2>报告会在审校完成后生成</h2>
-          <p>报告包含商品概况、同类市场、用户洞察、美国关税影响、数据限制和证据索引。</p>
+          <p>报告包含商品概况、同类市场、用户洞察、上市营销策略、美国关税影响和友好编号证据索引。</p>
           <button className="primary-button compact" onClick={() => navigate(runId ? 'agents' : 'workspace')}>{runId ? '查看 Agent 进度' : '创建分析任务'}<ArrowRight weight="bold" /></button>
         </section>
       )}
@@ -788,6 +1029,8 @@ function App() {
           <div className="content-stage">
             {page === 'workspace' && renderWorkspace()}
             {page === 'agents' && renderAgents()}
+            {page === 'strategy' && renderStrategy()}
+            {page === 'evidence' && renderEvidence()}
             {page === 'tariff' && renderTariff()}
             {page === 'audit' && renderAudit()}
             {page === 'report' && renderReport()}
