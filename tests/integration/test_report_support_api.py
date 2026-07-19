@@ -21,10 +21,10 @@ def _client(tmp_path: Path) -> TestClient:
     )
 
 
-def _report_id(client: TestClient) -> str:
+def _report_id(client: TestClient, name: str = "Support fixture") -> str:
     product = client.post(
         "/api/v1/products",
-        json={"name": "Support fixture", "category": "demo", "data_mode": "demo"},
+        json={"name": name, "category": "demo", "data_mode": "demo"},
     ).json()["data"]
     run_id = client.post(
         "/api/v1/analysis-runs",
@@ -36,6 +36,34 @@ def _report_id(client: TestClient) -> str:
             return str(run["report_id"])
         time.sleep(0.01)
     raise AssertionError("report was not created")
+
+
+def test_report_history_lists_each_run_with_its_latest_immutable_version(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        first_report_id = _report_id(client, "History product A")
+        second_report_id = _report_id(client, "History product B")
+        edited = client.post(
+            f"/api/v1/reports/{first_report_id}/support",
+            json={
+                "action": "edit",
+                "section_id": "next-actions",
+                "message": "Clarify the next action.",
+                "replacement": ["补充可追溯证据后再发布。"],
+            },
+        ).json()["data"]
+
+        response = client.get("/api/v1/reports")
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["total"] == 2
+    reports = {item["product_name"]: item for item in payload["reports"]}
+    assert reports["History product A"]["report_id"] == edited["report_id"]
+    assert reports["History product A"]["version"] == 2
+    assert reports["History product A"]["version_count"] == 2
+    assert reports["History product B"]["report_id"] == second_report_id
+    assert reports["History product B"]["version"] == 1
+    assert reports["History product B"]["version_count"] == 1
 
 
 def test_report_support_explains_with_section_evidence_limitations_and_history(tmp_path: Path) -> None:

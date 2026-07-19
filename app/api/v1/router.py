@@ -367,6 +367,17 @@ def add_feedback(
 
 
 @router.get(
+    "/reports",
+    summary="List persisted report families and their latest versions",
+    response_model=ApiResponse[dict[str, object]],
+    responses=API_ERROR_RESPONSES,
+)
+def list_report_history(request: Request, session: DbSession):  # type: ignore[no-untyped-def]
+    reports = ReportSupportService(session).history()
+    return success(request, {"total": len(reports), "reports": reports})
+
+
+@router.get(
     "/reports/{report_id}",
     summary="Get a structured TradePilot report",
     response_model=ApiResponse[FinalReport],

@@ -1,12 +1,16 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import {
   ArrowRight,
+  Archive,
+  ArrowsClockwise,
   BookOpenText,
+  CaretRight,
   ChartLineUp,
   ChatCircleText,
   CheckCircle,
   Clock,
+  ClockCounterClockwise,
   Compass,
   CurrencyDollar,
   Database,
@@ -16,6 +20,7 @@ import {
   Headset,
   Lightning,
   ListChecks,
+  MagnifyingGlass,
   Megaphone,
   Package,
   PaperPlaneTilt,
@@ -45,6 +50,8 @@ import {
   type CustomerServiceMessageResponse,
   type CustomerServicePersonality,
   type EvidenceReference,
+  type ReportHistoryItem,
+  type ReportVersionSummary,
   type ReportView,
   type RunStage,
   type RunStatus,
@@ -199,7 +206,7 @@ const navigation: Array<{ key: PageKey; label: string; caption: string; icon: ty
   { key: 'workspace', label: '商品市场', caption: '任务创建 · 白', icon: ChartLineUp, agent: 'A01' },
   { key: 'agents', label: '用户洞察', caption: '协作流程 · 粉', icon: UsersThree, agent: 'A02' },
   { key: 'decision', label: '运营决策', caption: '策略报告 · 棕', icon: Compass, agent: 'A03' },
-  { key: 'audit', label: '证据审校', caption: '关税证据 · 蓝', icon: ShieldCheck, agent: 'A04' },
+  { key: 'audit', label: '历史文档', caption: '版本协作 · 蓝', icon: Archive, agent: 'A04' },
 ]
 
 const legacyPageAliases: Record<string, PageKey> = {
@@ -236,6 +243,18 @@ function formatDuration(duration: number | null | undefined) {
   if (duration === null || duration === undefined) return '—'
   if (duration < 1000) return `${duration} ms`
   return `${(duration / 1000).toFixed(1)} s`
+}
+
+function formatHistoryDate(value: string) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return '时间未知'
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(parsed)
 }
 
 function statusText(status?: string) {
@@ -379,6 +398,14 @@ function App() {
   const [evidenceError, setEvidenceError] = useState('')
   const [report, setReport] = useState<ReportView | null>(null)
   const [markdown, setMarkdown] = useState('')
+  const [reportHistory, setReportHistory] = useState<ReportHistoryItem[]>([])
+  const [historyVersions, setHistoryVersions] = useState<ReportVersionSummary[]>([])
+  const [activeHistoryRunId, setActiveHistoryRunId] = useState<string | null>(null)
+  const [selectedVersionReportId, setSelectedVersionReportId] = useState<string | null>(null)
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyBusy, setHistoryBusy] = useState(false)
+  const [historyError, setHistoryError] = useState('')
+  const [archiveOpen, setArchiveOpen] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [personality, setPersonality] = useState<CustomerServicePersonality>('professional')
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -420,6 +447,60 @@ function App() {
     return () => { active = false }
   }, [])
 
+  const loadHistoryVersion = useCallback(async (reportId: string, resetConversation = false) => {
+    const [reportData, reportMarkdown] = await Promise.all([
+      api.report(reportId),
+      api.markdown(reportId),
+    ])
+    setReport(reportData)
+    setMarkdown(reportMarkdown)
+    setSelectedVersionReportId(reportId)
+    if (resetConversation) {
+      setConversationId(null)
+      setCustomerMessages([])
+      setCustomerResult(null)
+      setCustomerError('')
+    }
+  }, [])
+
+  const refreshReportHistory = useCallback(async (
+    preferredReportId?: string,
+    resetConversation = false,
+  ) => {
+    setHistoryBusy(true)
+    setHistoryError('')
+    try {
+      const historyData = await api.reportHistory()
+      setReportHistory(historyData.reports)
+      if (!historyData.reports.length) {
+        setHistoryVersions([])
+        setActiveHistoryRunId(null)
+        setSelectedVersionReportId(null)
+        return
+      }
+      const storedReportId = preferredReportId || localStorage.getItem('tradepilot-last-report-id') || ''
+      const selectedFamily = historyData.reports.find((item) => item.report_id === storedReportId)
+        || historyData.reports[0]
+      localStorage.setItem('tradepilot-last-report-id', selectedFamily.report_id)
+      setActiveHistoryRunId(selectedFamily.run_id)
+      const versionData = await api.reportVersions(selectedFamily.report_id)
+      setHistoryVersions(versionData.versions)
+      const preferredVersion = versionData.versions.find((item) => item.report_id === preferredReportId)
+      const latestVersion = versionData.versions[versionData.versions.length - 1]
+      await loadHistoryVersion((preferredVersion || latestVersion).report_id, resetConversation)
+    } catch (historyLoadError) {
+      setHistoryError(historyLoadError instanceof Error ? historyLoadError.message : '历史文档读取失败。')
+    } finally {
+      setHistoryBusy(false)
+    }
+  }, [loadHistoryVersion])
+
+  useEffect(() => {
+    if (page !== 'audit') return undefined
+    const timer = window.setTimeout(() => void refreshReportHistory(), 0)
+    return () => window.clearTimeout(timer)
+  }, [page, refreshReportHistory])
+
   useEffect(() => {
     if (!runId) return
     let active = true
@@ -451,6 +532,7 @@ function App() {
               setReport(reportData)
               setMarkdown(reportMarkdown)
               setEvidence(evidenceData.evidence)
+              localStorage.setItem('tradepilot-last-report-id', reportData.report_id)
             }
           }
           if (status.error?.message) setError(status.error.message)
@@ -509,6 +591,20 @@ function App() {
   const tariffProfile = tariffImpact?.primary_tariff_profile || null
   const tariffEvidence = tariffSnapshot?.tariff_evidence || []
   const tariffGaps = tariffSnapshot?.data_gaps || []
+  const filteredReportHistory = useMemo(() => {
+    const query = historySearch.trim().toLocaleLowerCase('zh-CN')
+    if (!query) return reportHistory
+    return reportHistory.filter((item) => [
+      item.product_name,
+      item.product_category,
+      item.report_id,
+      item.run_id,
+    ].some((value) => value.toLocaleLowerCase('zh-CN').includes(query)))
+  }, [historySearch, reportHistory])
+  const activeHistoryItem = reportHistory.find((item) => item.run_id === activeHistoryRunId) || null
+  const selectedHistoryVersion = historyVersions.find((item) => item.report_id === selectedVersionReportId) || null
+  const selectedVersionIsLatest = !!activeHistoryItem
+    && activeHistoryItem.report_id === selectedVersionReportId
 
   const navigate = (target: PageKey) => {
     window.location.assign(`#${target}`)
@@ -523,6 +619,7 @@ function App() {
 
   const openAudit = (section: AuditSection) => {
     setAuditSection(section)
+    setArchiveOpen(true)
     navigate('audit')
   }
 
@@ -543,6 +640,25 @@ function App() {
     }
   }
 
+  const selectHistoryFamily = async (item: ReportHistoryItem) => {
+    if (historyBusy || item.run_id === activeHistoryRunId) return
+    localStorage.setItem('tradepilot-last-report-id', item.report_id)
+    await refreshReportHistory(item.report_id, true)
+  }
+
+  const selectHistoryVersion = async (reportId: string) => {
+    if (historyBusy || reportId === selectedVersionReportId) return
+    setHistoryBusy(true)
+    setHistoryError('')
+    try {
+      await loadHistoryVersion(reportId, true)
+    } catch (versionError) {
+      setHistoryError(versionError instanceof Error ? versionError.message : '报告版本读取失败。')
+    } finally {
+      setHistoryBusy(false)
+    }
+  }
+
   const refreshCustomerConversation = async (reportId: string, nextConversationId: string) => {
     const conversation = await api.customerServiceConversation(reportId, nextConversationId)
     setConversationId(conversation.conversation_id)
@@ -554,6 +670,10 @@ function App() {
     event.preventDefault()
     const message = customerInput.trim()
     if (!report || !message || customerBusy) return
+    if (page === 'audit' && !selectedVersionIsLatest) {
+      setCustomerError('历史版本为只读快照，请先切回最新版本再继续修改。')
+      return
+    }
     setCustomerBusy(true)
     setCustomerError('')
     setCustomerInput('')
@@ -568,13 +688,11 @@ function App() {
         personality,
       })
       setCustomerResult(result)
-      const [latestReport, latestMarkdown] = await Promise.all([
-        api.report(result.report_id),
-        api.markdown(result.report_id),
+      localStorage.setItem('tradepilot-last-report-id', result.report_id)
+      await Promise.all([
         refreshCustomerConversation(result.report_id, result.conversation_id),
+        refreshReportHistory(result.report_id),
       ])
-      setReport(latestReport)
-      setMarkdown(latestMarkdown)
     } catch (customerServiceError) {
       setCustomerError(customerServiceError instanceof Error ? customerServiceError.message : '客服 Agent 暂时无法响应。')
       setCustomerMessages((current) => current.filter((item) => !item.message_id.startsWith('optimistic-')))
@@ -1169,17 +1287,123 @@ function App() {
     </div>
   )
 
-  const renderAuditHub = () => (
-    <div className="page-hub audit-hub">
-      <nav className="section-switcher" aria-label="证据审校子页面">
-        <button className={auditSection === 'audit' ? 'active' : ''} aria-pressed={auditSection === 'audit'} onClick={() => setAuditSection('audit')}><ShieldCheck weight="duotone" /><span><strong>审校结果</strong><small>结论与复核边界</small></span></button>
-        <button className={auditSection === 'tariff' ? 'active' : ''} aria-pressed={auditSection === 'tariff'} onClick={() => setAuditSection('tariff')}><Receipt weight="duotone" /><span><strong>关税合规</strong><small>美国 HTS 证据</small></span></button>
-        <button className={auditSection === 'evidence' ? 'active' : ''} aria-pressed={auditSection === 'evidence'} onClick={() => setAuditSection('evidence')}><Fingerprint weight="duotone" /><span><strong>证据中心</strong><small>来源与原文详情</small></span></button>
-      </nav>
-      {auditSection === 'audit' && renderAudit()}
-      {auditSection === 'tariff' && renderTariff()}
-      {auditSection === 'evidence' && renderEvidence()}
+  const renderHistoryAgentPanel = () => (
+    <aside className="history-agent-panel glass-panel" aria-labelledby="history-agent-title">
+      <header className="history-panel-heading agent-heading">
+        <span><Robot weight="duotone" /></span>
+        <div><small>DOCUMENT COPILOT</small><h2 id="history-agent-title">客服 Agent 修改台</h2><p>对当前最新版本提出修改，系统会保留原文并生成新版本。</p></div>
+      </header>
+
+      {!report ? (
+        <div className="history-agent-empty"><Headset weight="thin" /><strong>等待可编辑报告</strong><p>完成一次真实分析后，即可在这里继续修改文档。</p></div>
+      ) : (
+        <>
+          <div className={`history-edit-context ${selectedVersionIsLatest ? 'is-latest' : 'is-readonly'}`}>
+            {selectedVersionIsLatest ? <CheckCircle weight="fill" /> : <ClockCounterClockwise weight="duotone" />}
+            <div><strong>{selectedVersionIsLatest ? `正在编辑最新版本 v${report.version}` : `正在查看历史版本 v${report.version}`}</strong><small>{selectedVersionIsLatest ? 'Agent 的有效修改会自动生成下一版文档。' : '历史快照不可直接覆盖，请切回最新版本。'}</small></div>
+          </div>
+
+          <fieldset className="history-personality-picker" disabled={customerBusy || !selectedVersionIsLatest}>
+            <legend>客服回复风格</legend>
+            <div>{personalityOptions.map((option) => <button type="button" className={personality === option.value ? 'active' : ''} aria-pressed={personality === option.value} key={option.value} onClick={() => setPersonality(option.value)}><strong>{option.label}</strong><small>{option.caption}</small></button>)}</div>
+          </fieldset>
+
+          <div className="history-agent-conversation" aria-live="polite">
+            {!customerMessages.length && <div className="assistant-welcome"><span><Sparkle weight="duotone" /></span><div><strong>告诉我想改什么</strong><p>可以调整目标人群、产品定位、营销文案或推广策略；修改结果会作为新版本存入左侧历史记录。</p></div></div>}
+            {customerMessages.map((message) => <article className={`customer-message role-${message.role}`} key={message.message_id}><span>{message.role === 'assistant' ? <Robot weight="duotone" /> : <ChatCircleText weight="duotone" />}</span><div><small>{message.role === 'assistant' ? '客服 AI' : '你'}</small><p>{message.content}</p></div></article>)}
+            {customerBusy && <article className="customer-message role-assistant is-thinking"><span><Robot weight="duotone" /></span><div><small>客服 AI</small><p><Pulse className="spin" weight="bold" /> 正在核对证据并生成增量版本…</p></div></article>}
+            {customerError && <div className="customer-error" role="alert"><WarningCircle weight="fill" />{customerError}</div>}
+            {customerResult && <div className="customer-action-card"><div><span>{customerActionText(customerResult.action_taken)}</span><strong>报告 v{customerResult.report_version}</strong></div>{!!customerResult.change_summary.length && <ul>{customerResult.change_summary.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>}{!!customerResult.pending_questions.length && <div className="pending-questions"><small>请继续补充</small>{customerResult.pending_questions.map((question) => <button type="button" key={question} onClick={() => setCustomerInput(question)}>{question}</button>)}</div>}</div>}
+          </div>
+
+          {!customerMessages.length && selectedVersionIsLatest && <div className="history-agent-prompts" aria-label="文档修改示例">
+            {['目标用户调整为大学生群体', '把产品定位调整得更高端', '营销文案写得更专业一些'].map((prompt) => <button type="button" key={prompt} onClick={() => setCustomerInput(prompt)}>{prompt}</button>)}
+          </div>}
+
+          <form className="history-agent-composer" onSubmit={handleCustomerMessage}>
+            <label htmlFor="history-customer-message">输入修改要求</label>
+            <textarea id="history-customer-message" rows={4} value={customerInput} onChange={(event) => setCustomerInput(event.target.value)} placeholder="例如：把推广策略调整得更保守一些" disabled={customerBusy || !selectedVersionIsLatest} />
+            <div><small>不会覆盖历史版本，也不会编造销量、转化率或新证据。</small><button type="submit" disabled={customerBusy || !selectedVersionIsLatest || !customerInput.trim()}>{customerBusy ? <Pulse className="spin" weight="bold" /> : <PaperPlaneTilt weight="fill" />}<span>{customerBusy ? '处理中' : '生成新版本'}</span></button></div>
+          </form>
+        </>
+      )}
+    </aside>
+  )
+
+  const renderHistoryWorkspace = () => (
+    <div className="page-view page-history">
+      <PageHeader
+        eyebrow="A04 · DOCUMENT MEMORY"
+        title="历史文档与智能修改"
+        description="集中保存每次分析生成的报告及其不可变版本，并通过客服 Agent 在证据边界内继续修改。"
+        action={<button className="compact-button history-refresh" onClick={() => void refreshReportHistory(activeHistoryItem?.report_id)} disabled={historyBusy}><ArrowsClockwise className={historyBusy ? 'spin' : ''} weight="bold" />刷新记录</button>}
+      />
+
+      <section className="history-statbar" aria-label="历史文档统计">
+        <div><Archive weight="duotone" /><span><small>文档族</small><strong>{reportHistory.length}</strong></span></div>
+        <div><ClockCounterClockwise weight="duotone" /><span><small>累计版本</small><strong>{reportHistory.reduce((total, item) => total + item.version_count, 0)}</strong></span></div>
+        <div><FileText weight="duotone" /><span><small>当前预览</small><strong>{selectedHistoryVersion ? `V${selectedHistoryVersion.version}` : '—'}</strong></span></div>
+      </section>
+
+      {historyError && <div className="history-global-error" role="alert"><WarningCircle weight="fill" /><span>{historyError}</span><button type="button" onClick={() => void refreshReportHistory()}>重试</button></div>}
+
+      <section className="history-workbench">
+        <aside className="history-library glass-panel" aria-label="历史文档列表">
+          <header className="history-panel-heading">
+            <span><Archive weight="duotone" /></span>
+            <div><small>DOCUMENT LIBRARY</small><h2>历史记录</h2><p>按分析任务归档，最新版本置于每组顶部。</p></div>
+          </header>
+          <label className="history-search"><span>搜索历史文档</span><div><MagnifyingGlass weight="bold" /><input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="商品名、分类或报告 ID" /></div></label>
+          <div className="history-family-list">
+            {historyBusy && !reportHistory.length ? Array.from({ length: 3 }, (_, index) => <div className="history-skeleton" key={index}><i /><span /><span /></div>) : filteredReportHistory.map((item) => (
+              <button type="button" className={item.run_id === activeHistoryRunId ? 'active' : ''} aria-pressed={item.run_id === activeHistoryRunId} key={item.run_id} onClick={() => void selectHistoryFamily(item)}>
+                <span className="history-family-icon"><FileText weight="duotone" /></span>
+                <span className="history-family-copy"><strong>{item.product_name}</strong><small>{item.product_category || '未分类'} · {formatHistoryDate(item.updated_at)}</small><em><i className={`audit-dot status-${item.audit_status}`} />最新 V{item.version} · 共 {item.version_count} 版</em></span>
+                <CaretRight weight="bold" />
+              </button>
+            ))}
+            {!historyBusy && !filteredReportHistory.length && <div className="history-empty"><Archive weight="thin" /><strong>{reportHistory.length ? '没有匹配记录' : '还没有历史文档'}</strong><p>{reportHistory.length ? '换一个关键词继续搜索。' : '完成一次真实分析后，报告会自动保存在这里。'}</p>{!reportHistory.length && <button className="compact-button" onClick={() => navigate('workspace')}>创建分析任务</button>}</div>}
+          </div>
+        </aside>
+
+        <section className="history-document-panel glass-panel" aria-labelledby="history-document-title">
+          <header className="history-panel-heading document-heading">
+            <span><FileText weight="duotone" /></span>
+            <div><small>IMMUTABLE VERSIONS</small><h2 id="history-document-title">{activeHistoryItem?.product_name || '文档预览'}</h2><p>{activeHistoryItem ? `${activeHistoryItem.product_category || '未分类'} · ${activeHistoryItem.version_count} 个不可变版本` : '选择左侧记录查看生成文档。'}</p></div>
+            {report && <span className={`status-pill status-${report.audit_status}`}>{statusIcon(report.audit_status)}{statusText(report.audit_status)}</span>}
+          </header>
+
+          {!!historyVersions.length && <nav className="history-version-strip" aria-label="报告版本">
+            {historyVersions.map((version) => <button type="button" className={version.report_id === selectedVersionReportId ? 'active' : ''} aria-pressed={version.report_id === selectedVersionReportId} key={version.report_id} onClick={() => void selectHistoryVersion(version.report_id)}><span>V{version.version}</span><small>{version.version === activeHistoryItem?.version ? '最新' : formatHistoryDate(version.created_at)}</small></button>)}
+          </nav>}
+
+          {markdown ? <>
+            <div className="history-document-meta"><span><strong>REPORT ID</strong><code>{report?.report_id.slice(0, 8).toUpperCase()}</code></span><span><strong>版本时间</strong><em>{selectedHistoryVersion ? formatHistoryDate(selectedHistoryVersion.created_at) : '—'}</em></span><span><strong>修改范围</strong><em>{selectedHistoryVersion?.changed_section_ids.length ? `${selectedHistoryVersion.changed_section_ids.length} 个章节` : '原始报告'}</em></span></div>
+            <article className="history-report-paper"><ReactMarkdown skipHtml>{markdown}</ReactMarkdown></article>
+          </> : <div className="history-document-empty"><FileText weight="thin" /><strong>选择一份历史文档</strong><p>这里会显示对应版本的完整 Markdown 内容。</p></div>}
+        </section>
+
+        {renderHistoryAgentPanel()}
+      </section>
+
+      <section className="history-archive glass-panel">
+        <button type="button" className="history-archive-toggle" aria-expanded={archiveOpen} onClick={() => setArchiveOpen((value) => !value)}><span><ShieldCheck weight="duotone" /><span><strong>审校与证据存档</strong><small>需要时查看当前分析关联的审校结论、关税和原始证据。</small></span></span><CaretRight className={archiveOpen ? 'is-open' : ''} weight="bold" /></button>
+        {archiveOpen && <div className="history-archive-content">
+          <nav className="section-switcher" aria-label="历史审校存档">
+            <button className={auditSection === 'audit' ? 'active' : ''} aria-pressed={auditSection === 'audit'} onClick={() => setAuditSection('audit')}><ShieldCheck weight="duotone" /><span><strong>审校结果</strong><small>结论与复核边界</small></span></button>
+            <button className={auditSection === 'tariff' ? 'active' : ''} aria-pressed={auditSection === 'tariff'} onClick={() => setAuditSection('tariff')}><Receipt weight="duotone" /><span><strong>关税合规</strong><small>美国 HTS 证据</small></span></button>
+            <button className={auditSection === 'evidence' ? 'active' : ''} aria-pressed={auditSection === 'evidence'} onClick={() => setAuditSection('evidence')}><Fingerprint weight="duotone" /><span><strong>证据中心</strong><small>来源与原文详情</small></span></button>
+          </nav>
+          {auditSection === 'audit' && renderAudit()}
+          {auditSection === 'tariff' && renderTariff()}
+          {auditSection === 'evidence' && renderEvidence()}
+        </div>}
+      </section>
     </div>
+  )
+
+  const renderAuditHub = () => (
+    <div className="page-hub history-hub">{renderHistoryWorkspace()}</div>
   )
 
   return (

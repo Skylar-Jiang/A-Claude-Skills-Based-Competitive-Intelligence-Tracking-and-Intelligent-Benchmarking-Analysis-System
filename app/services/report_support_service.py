@@ -125,6 +125,9 @@ class ReportSupportService:
         report = self.reports.get_report(report_id)
         return self.reports.list_report_versions(report.run_id)
 
+    def history(self) -> list[dict[str, Any]]:
+        return self.reports.list_report_history()
+
     def _explain(self, report: FinalReport, section_key: str, section_id: str) -> dict[str, Any]:
         evidence_ids = self._evidence_ids(report, report.sections[section_key])
         limitations = self._limitations(report)

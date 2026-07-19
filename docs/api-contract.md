@@ -9,7 +9,7 @@ Formal endpoints use `/api/v1`. JSON endpoints return the unified envelope:
 Errors use `success=false`, `data=null`, and structured `error.code`, `error.message`, and `error.details`. Real mode
 never substitutes Demo/Mock output. Workflow exceptions persist a failed run when a run has already been created.
 
-The 27 routes are:
+The 28 routes are:
 
 - `GET /api/v1/health`
 - `GET /api/v1/workflow/metadata`
@@ -30,6 +30,7 @@ The 27 routes are:
 - `POST /api/v1/analysis-runs/{run_id}/feedback`
 - `GET /api/v1/reports/{report_id}`
 - `GET /api/v1/reports/{report_id}/markdown`
+- `GET /api/v1/reports`（按分析任务列出持久化报告族及其最新版本）
 - `GET /api/v1/reports/{report_id}/json`
 - `POST /api/v1/reports/{report_id}/support`
 - `POST /api/v1/reports/{report_id}/customer-service/messages`

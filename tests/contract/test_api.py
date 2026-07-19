@@ -223,6 +223,7 @@ def test_openapi_contains_formal_v1_routes(tmp_path: Path) -> None:
         "/api/v1/analysis-runs/{run_id}/audit",
         "/api/v1/analysis-runs/{run_id}/events",
         "/api/v1/analysis-runs/{run_id}/feedback",
+        "/api/v1/reports",
         "/api/v1/reports/{report_id}",
         "/api/v1/reports/{report_id}/markdown",
         "/api/v1/reports/{report_id}/json",
@@ -253,7 +254,7 @@ def test_every_v1_operation_declares_typed_success_and_unified_error_models(tmp_
         for method, operation in path.items()
         if method in {"get", "post"}
     ]
-    assert len(operations) == 27
+    assert len(operations) == 28
     enveloped = []
     for operation in operations:
         success_status = next(
@@ -267,4 +268,4 @@ def test_every_v1_operation_declares_typed_success_and_unified_error_models(tmp_
         error_schema = operation["responses"]["422"]["content"]["application/json"]["schema"]
         assert "ApiResponse" in success_schema["$ref"]
         assert "ApiResponse" in error_schema["$ref"]
-    assert len(enveloped) == 24
+    assert len(enveloped) == 25

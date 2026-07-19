@@ -385,6 +385,36 @@ class SqlAlchemyAnalysisRepository:
             raise ResourceNotFoundError("report", report_id)
         return FinalReport.model_validate(record.metadata_json)
 
+    def list_report_history(self) -> list[dict[str, Any]]:
+        rows = self.session.execute(
+            select(Report, AnalysisRun, Product)
+            .join(AnalysisRun, AnalysisRun.run_id == Report.run_id)
+            .join(Product, Product.product_id == AnalysisRun.product_id)
+            .order_by(Report.created_at.desc(), Report.version.desc())
+        ).all()
+        families: dict[str, dict[str, Any]] = {}
+        for record, run, product in rows:
+            existing = families.get(record.run_id)
+            if existing is not None:
+                existing["version_count"] += 1
+                existing["created_at"] = record.created_at.isoformat()
+                continue
+            report = FinalReport.model_validate(record.metadata_json)
+            families[record.run_id] = {
+                "report_id": report.report_id,
+                "run_id": report.run_id,
+                "product_id": run.product_id,
+                "product_name": product.name,
+                "product_category": product.category,
+                "version": report.version,
+                "version_count": 1,
+                "audit_status": report.audit_status.value,
+                "changed_section_ids": report.changed_section_ids,
+                "created_at": record.created_at.isoformat(),
+                "updated_at": report.created_at.isoformat(),
+            }
+        return list(families.values())
+
     def list_report_versions(self, run_id: str) -> list[FinalReport]:
         self.get_run(run_id)
         records = self.session.scalars(

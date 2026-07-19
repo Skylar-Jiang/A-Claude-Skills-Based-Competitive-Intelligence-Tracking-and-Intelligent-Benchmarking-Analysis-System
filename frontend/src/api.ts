@@ -127,6 +127,28 @@ export interface ReportView {
   sections: Record<string, unknown>
 }
 
+export interface ReportHistoryItem {
+  report_id: string
+  run_id: string
+  product_id: string
+  product_name: string
+  product_category: string
+  version: number
+  version_count: number
+  audit_status: 'pass' | 'warning' | 'rejected'
+  changed_section_ids: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ReportVersionSummary {
+  report_id: string
+  version: number
+  parent_report_id: string | null
+  changed_section_ids: string[]
+  created_at: string
+}
+
 export type CustomerServicePersonality = 'simple' | 'professional' | 'companion' | 'innovative'
 
 export interface CustomerServiceMessageResponse {
@@ -223,7 +245,10 @@ export const api = {
     ),
   audit: (runId: string) =>
     request<{ run_id: string; audit: AuditResult | null }>(`/analysis-runs/${runId}/audit`),
+  reportHistory: () => request<{ total: number; reports: ReportHistoryItem[] }>('/reports'),
   report: (reportId: string) => request<ReportView>(`/reports/${reportId}`),
+  reportVersions: (reportId: string) =>
+    request<{ run_id: string; versions: ReportVersionSummary[] }>(`/reports/${reportId}/versions`),
   customerServiceMessage: (
     reportId: string,
     payload: { conversation_id: string | null; message: string; personality: CustomerServicePersonality },
