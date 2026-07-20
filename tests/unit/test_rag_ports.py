@@ -172,6 +172,32 @@ def test_chroma_ingest_deduplicates_repeated_document_ids_within_one_batch(tmp_p
     assert store.client.list_collections() == []
 
 
+def test_chroma_ingest_updates_scope_metadata_when_content_is_unchanged(tmp_path: Path) -> None:
+    store = ChromaKnowledgeStore(tmp_path, TinyEmbedding())
+    original = KnowledgeDocument(
+        document_id="shared-review",
+        product_id="peer-1",
+        knowledge_type=KnowledgeType.REVIEW_INSIGHT,
+        content="The review content is unchanged.",
+        source_name="review fixture",
+        data_origin=DataOrigin.REAL,
+        metadata={"content_hash": "same", "peer_group_id": "old-group"},
+    )
+    moved = original.model_copy(
+        update={"metadata": {"content_hash": "same", "peer_group_id": "new-group"}}
+    )
+
+    assert store.ingest_with_report([original]).inserted_or_updated == 1
+    report = store.ingest_with_report([moved])
+    stored = store._collection(KnowledgeType.REVIEW_INSIGHT).get(
+        ids=["shared-review"], include=["metadatas"]
+    )
+
+    assert report.inserted_or_updated == 1
+    assert report.skipped_unchanged == 0
+    assert stored["metadatas"][0]["peer_group_id"] == "new-group"
+
+
 def test_chroma_adapter_filters_peer_group_without_requiring_new_product_id(tmp_path: Path) -> None:
     store = ChromaKnowledgeStore(tmp_path, TinyEmbedding())
     store.ingest(

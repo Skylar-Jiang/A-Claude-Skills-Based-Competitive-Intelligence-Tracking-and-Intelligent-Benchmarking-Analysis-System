@@ -553,6 +553,39 @@ def test_operations_agent_retries_when_strategy_list_contains_objects(
     assert plan.parse_retry_count == 1
 
 
+def test_operations_agent_flattens_summary_objects_only_after_bounded_retry(
+    demo_product: ProductProfile,
+) -> None:
+    product = demo_product.model_copy(update={"data_origin": DataOrigin.REAL})
+    response = (
+        '{"positioning":{"title":"证据约束定位","description":"突出舒适与安全"},'
+        '"marketing_objective":{"title":"首发目标","description":"建立可信认知"},'
+        '"evidence_ids":["market-1"],"conclusions":[],"data_gaps":[],"next_steps":[]}'
+    )
+    model = FakeListChatModel(responses=[response, response])
+
+    plan = OperationsDecisionAgent(model=model).run(
+        OperationsDecisionAgentInput(
+            product=product,
+            product_market_analysis=ProductMarketAnalysis(
+                status=AgentStatus.SUCCEEDED,
+                data_origin=DataOrigin.REAL,
+                evidence_ids=["market-1"],
+            ),
+            user_insight=UserInsight(
+                status=AgentStatus.SUCCEEDED,
+                data_origin=DataOrigin.REAL,
+                evidence_ids=["review-1"],
+            ),
+        )
+    )
+
+    assert plan.positioning == "证据约束定位：突出舒适与安全"
+    assert plan.marketing_objective == "首发目标：建立可信认知"
+    assert plan.model_call_count == 2
+    assert plan.parse_retry_count == 1
+
+
 def test_operations_agent_flattens_strategy_objects_only_after_bounded_retry(
     demo_product: ProductProfile,
 ) -> None:

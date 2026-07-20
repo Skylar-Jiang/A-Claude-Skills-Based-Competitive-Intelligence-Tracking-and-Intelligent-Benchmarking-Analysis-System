@@ -598,7 +598,7 @@ class CustomerServiceAgentService:
             conclusions,
             [
                 {
-                    "summary": str(rules["conclusion"]),
+                    "conclusion": str(rules["conclusion"]),
                     "source": "customer_service_agent",
                     "evidence_ids": strategy_evidence_ids,
                 }

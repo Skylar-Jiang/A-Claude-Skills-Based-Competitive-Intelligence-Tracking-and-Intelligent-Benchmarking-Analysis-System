@@ -72,8 +72,8 @@ class ChromaKnowledgeStore:
             contents: list[str] = []
             metadatas: list[dict[str, str | int | float | bool]] = []
             existing = collection.get(ids=[item.document_id for item in items], include=["metadatas"])
-            existing_hashes = {
-                item_id: (metadata or {}).get("content_hash")
+            existing_metadatas = {
+                item_id: metadata or {}
                 for item_id, metadata in zip(existing.get("ids", []), existing.get("metadatas", []), strict=False)
             }
             for item in items:
@@ -87,9 +87,8 @@ class ChromaKnowledgeStore:
                     "is_demo": item.data_origin is DataOrigin.DEMO,
                     "knowledge_type": item.knowledge_type.value,
                 }
-                existing_hash = existing_hashes.get(item.document_id)
-                new_hash = metadata.get("content_hash")
-                if existing_hash is not None and new_hash is not None and existing_hash == new_hash:
+                existing_metadata = existing_metadatas.get(item.document_id)
+                if existing_metadata is not None and existing_metadata == metadata:
                     report.skipped_unchanged += 1
                     continue
                 ids.append(item.document_id)

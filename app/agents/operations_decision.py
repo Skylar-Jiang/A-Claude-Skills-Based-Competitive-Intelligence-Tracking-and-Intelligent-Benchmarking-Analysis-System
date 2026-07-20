@@ -194,9 +194,13 @@ class OperationsDecisionAgent(BaseScaffoldAgent[OperationsDecisionAgentInput, Op
         )
         payload.setdefault("data_gaps", [])
         payload["next_steps"] = normalize_text_list(payload.get("next_steps", []))
-        payload["positioning"] = self._normalize_positioning(payload.get("positioning", ""))
+        payload["positioning"] = self._normalize_positioning(
+            payload.get("positioning", ""),
+            allow_objects=allow_strategy_objects,
+        )
         payload["marketing_objective"] = self._normalize_positioning(
-            payload.get("marketing_objective", "")
+            payload.get("marketing_objective", ""),
+            allow_objects=allow_strategy_objects,
         )
         strategy_fields = (
             "target_segments",
@@ -307,10 +311,12 @@ class OperationsDecisionAgent(BaseScaffoldAgent[OperationsDecisionAgentInput, Op
         )
 
     @staticmethod
-    def _normalize_positioning(value: object) -> str:
-        if not isinstance(value, str):
+    def _normalize_positioning(value: object, *, allow_objects: bool = False) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        if not allow_objects:
             raise ValueError("OperationPlan strategy summary fields must be strings")
-        return value.strip()
+        return "；".join(dict.fromkeys(OperationsDecisionAgent._render_strategy_values(value)))
 
     @staticmethod
     def _normalize_strategy_list(value: object, *, allow_objects: bool = False) -> list[str]:
