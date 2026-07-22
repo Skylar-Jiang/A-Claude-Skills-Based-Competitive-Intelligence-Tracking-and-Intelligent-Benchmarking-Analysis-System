@@ -12,7 +12,7 @@ TradePilot now supports three practical real-mode setups:
 2. `DeepSeek + Qwen` for mixed-provider operation, especially when you want Qwen embeddings or Qwen vision.
 3. `OpenAI-compatible` as a legacy fallback for text generation.
 
-For the current US HTS tax-and-trade workflow, `DeepSeek-only` is enough to generate a real Chinese Markdown report, as long as you do not require Qwen-specific vision or Qwen embedding calls.
+`real_model_configured` covers the four text-Agent entry points. A complete HTTP real run also requires `RAG_USE_CHROMA=true`, an explicit `EMBEDDING_MODEL`, prepared peer sources/caches, and any requested background dataset.
 
 ## Where to configure
 
@@ -48,7 +48,7 @@ MODEL_FAST=deepseek-v4-flash
 MODEL_REPORT=deepseek-v4-flash
 MODEL_VISION=qwen3-vl-plus
 
-EMBEDDING_MODEL=
+EMBEDDING_MODEL=your_openai_compatible_embedding_model
 RAG_USE_CHROMA=true
 ```
 
@@ -56,7 +56,8 @@ Notes:
 
 - `MODEL_ANALYSIS`, `MODEL_FAST`, and `MODEL_REPORT` must all be set.
 - Leave `QWEN_API_KEY` empty. Do not keep a placeholder string there.
-- Leave `EMBEDDING_MODEL` empty to use the local hash embedding fallback.
+- A deployed real run must not leave `EMBEDDING_MODEL` empty. The local hash embedding is limited to tests, CLI validation and offline development.
+- A non-Qwen embedding model also requires the configured OpenAI-compatible embedding credentials. If those are unavailable, use the mixed DeepSeek + Qwen configuration below.
 - If no candidate image is uploaded, image understanding is skipped and Qwen vision is not required.
 - If you later upload candidate images and want real vision analysis, you still need a valid `QWEN_API_KEY`.
 
@@ -136,7 +137,7 @@ As of 2026-07-17:
 - `EvidenceAuditAgent` prefers Qwen when `QWEN_API_KEY + MODEL_FAST` exist; otherwise it can use DeepSeek.
 - `create_vision_model()` still requires Qwen when a real candidate image actually needs to be analyzed.
 - `EMBEDDING_MODEL=text-embedding-v4` uses the Qwen-compatible embedding endpoint.
-- blank `EMBEDDING_MODEL` uses local `tradepilot-hash-embedding`.
+- blank `EMBEDDING_MODEL` uses local `tradepilot-hash-embedding` only in tests/offline helpers; the deployed real-mode readiness check rejects it.
 
 ## Common failure modes
 
@@ -185,7 +186,7 @@ print("rag_use_chroma =", s.rag_use_chroma)
 '@ | & C:\Users\ASUS\.conda\envs\shixun\python.exe -
 ```
 
-For a DeepSeek-only text setup, the expected shape is:
+For a DeepSeek-only text stack (before the separate real RAG readiness check), the expected shape is:
 
 ```text
 real_model_configured = True

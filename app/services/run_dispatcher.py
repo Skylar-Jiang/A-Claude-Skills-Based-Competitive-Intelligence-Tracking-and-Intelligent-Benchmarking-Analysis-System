@@ -143,6 +143,15 @@ class RunDispatcher:
                     event_type="workflow_failed",
                     payload={"error_type": error.get("type", type(exc).__name__), "fallback_used": False},
                 )
+                logger.error(
+                    "analysis run failed",
+                    extra={
+                        "run_id": run_id,
+                        "failed_stage": failed_stage_key or run.current_node,
+                        "error_type": error.get("type", type(exc).__name__),
+                        "error_code": error.get("code"),
+                    },
+                )
 
     @staticmethod
     def _serialize_error(exc: Exception) -> dict[str, Any]:

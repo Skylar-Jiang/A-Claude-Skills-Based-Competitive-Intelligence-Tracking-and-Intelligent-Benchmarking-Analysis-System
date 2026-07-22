@@ -32,3 +32,21 @@ def test_registry_is_optional_and_resolves_named_provider() -> None:
     assert result is not None
     assert result.provider == "fake-background"
     assert result.query == query
+
+
+def test_missing_named_provider_returns_an_explicit_data_gap() -> None:
+    registry = BackgroundProviderRegistry()
+    query = BackgroundQuery(
+        product_name="Cat fountain",
+        product_type="fountain",
+        market="United States",
+        query_date=date(2026, 7, 23),
+    )
+
+    result = registry.query(query, provider_name="us-tariff-provider")
+
+    assert result is not None
+    assert result.provider == "us-tariff-provider"
+    assert result.evidence == []
+    assert [gap.code for gap in result.data_gaps] == ["background_provider_unavailable"]
+    assert result.query == query

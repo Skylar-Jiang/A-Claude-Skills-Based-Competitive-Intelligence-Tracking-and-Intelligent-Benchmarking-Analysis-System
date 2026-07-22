@@ -230,9 +230,10 @@ def test_mock_and_configured_real_never_fall_back_to_demo(tmp_path: Path) -> Non
     assert mock.status_code == 503
     assert real.status_code == 503
     assert mock.json()["error"]["code"] == "workflow_failed"
-    assert real.json()["error"]["code"] == "workflow_failed"
+    assert real.json()["error"]["code"] == "data_preparation_required"
     assert "fallback" in mock.json()["error"]["message"]
-    assert "fallback" in real.json()["error"]["message"]
+    assert "RAG_USE_CHROMA=true" in real.json()["error"]["message"]
+    assert "scaffold" not in real.json()["error"]["message"].lower()
 
 
 def test_workflow_failure_is_persisted_and_returned_without_fallback(

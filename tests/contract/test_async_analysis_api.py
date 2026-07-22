@@ -110,7 +110,7 @@ def test_background_failure_is_persisted_without_demo_or_mock_fallback(
 
 
 def test_background_failure_marks_the_running_stage_failed(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, caplog
 ) -> None:  # type: ignore[no-untyped-def]
     def fail_during_peer_matching(self, run_id):  # type: ignore[no-untyped-def]
         self._stage(run_id, "peer_matching", RunStageStatus.RUNNING)
@@ -140,6 +140,53 @@ def test_background_failure_marks_the_running_stage_failed(
     peer_stage = next(item for item in timeline["stages"] if item["stage_key"] == "peer_matching")
     assert peer_stage["status"] == "failed"
     assert peer_stage["error"]["message"] == "controlled peer matching failure"
+    failure_record = next(record for record in caplog.records if record.message == "analysis run failed")
+    assert failure_record.run_id == run_id
+    assert failure_record.failed_stage == "peer_matching"
+    assert failure_record.error_type == "ValueError"
+
+
+def test_background_failure_log_keeps_the_workflow_node_after_state_is_finalized(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:  # type: ignore[no-untyped-def]
+    def fail_after_workflow_persisted_error(self, run_id):  # type: ignore[no-untyped-def]
+        error = {"type": "RuntimeError", "message": "controlled Agent failure"}
+        self._stage(run_id, "evidence_audit_agent", RunStageStatus.RUNNING)
+        self.analyses.transition_stage(
+            run_id,
+            "evidence_audit_agent",
+            RunStageStatus.FAILED,
+            error=error,
+        )
+        self.analyses.update_run(
+            run_id,
+            status="failed",
+            current_node="workflow_failed",
+            state={"error": error},
+        )
+        raise RuntimeError("controlled Agent failure")
+
+    monkeypatch.setattr(
+        "app.services.analysis_service.AnalysisService.execute",
+        fail_after_workflow_persisted_error,
+    )
+    with TestClient(create_app(_settings(tmp_path))) as client:
+        product = client.post(
+            "/api/v1/products",
+            json={"name": "Agent stage failure", "category": "demo", "data_mode": "demo"},
+        ).json()["data"]
+        response = client.post(
+            "/api/v1/analysis-runs",
+            json={"product_id": product["product_id"], "data_mode": "demo"},
+        )
+        run_id = response.json()["data"]["run_id"]
+        for _ in range(200):
+            if client.get(f"/api/v1/analysis-runs/{run_id}").json()["data"]["status"] == "failed":
+                break
+            time.sleep(0.01)
+
+    failure_record = next(record for record in caplog.records if record.message == "analysis run failed")
+    assert failure_record.failed_stage == "evidence_audit_agent"
 
 
 def test_background_dispatcher_creates_a_worker_owned_knowledge_store(

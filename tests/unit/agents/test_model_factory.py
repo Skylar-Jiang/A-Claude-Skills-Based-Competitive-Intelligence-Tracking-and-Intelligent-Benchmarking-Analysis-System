@@ -50,6 +50,37 @@ def test_qwen_models_disable_thinking_for_structured_output(monkeypatch) -> None
     assert client_options["trust_env"] is False
 
 
+def test_mixed_provider_routes_each_model_role_by_configured_provider(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    created: list[dict[str, object]] = []
+
+    def fake_chat_openai(**kwargs):  # type: ignore[no-untyped-def]
+        created.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(model_factory, "ChatOpenAI", fake_chat_openai)
+    monkeypatch.setattr(model_factory.httpx, "Client", lambda **_kwargs: object())
+    settings = Settings(
+        _env_file=None,
+        deepseek_api_key="fake-deepseek-credential",
+        deepseek_base_url="https://deepseek.example/v1",
+        qwen_api_key="fake-qwen-credential",
+        qwen_base_url="https://qwen.example/v1",
+        model_analysis="deepseek-analysis-model",
+        model_report="qwen-report-model",
+        model_fast="qwen-fast-model",
+    )
+
+    model_factory.create_analysis_model(settings)
+    model_factory.create_operations_model(settings)
+    model_factory.create_audit_model(settings)
+
+    assert [(item["base_url"], item["model"]) for item in created] == [
+        ("https://deepseek.example/v1", "deepseek-analysis-model"),
+        ("https://qwen.example/v1", "qwen-report-model"),
+        ("https://qwen.example/v1", "qwen-fast-model"),
+    ]
+
+
 def test_minimax_m3_disables_thinking_for_bounded_json(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     captured: dict[str, object] = {}
 

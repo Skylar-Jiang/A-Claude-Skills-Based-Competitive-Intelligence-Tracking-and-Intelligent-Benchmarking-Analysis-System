@@ -44,7 +44,10 @@ def validate_real_readiness(settings: Settings) -> None:
     if not settings.real_model_configured:
         raise LLMNotConfiguredError()
     if not settings.rag_use_chroma:
-        raise ScaffoldOnlyError("real")
+        raise DataPreparationRequiredError(
+            "real Chroma RAG",
+            action="set RAG_USE_CHROMA=true and configure the real retrieval data",
+        )
 
     embedding_model = (settings.embedding_model or "").strip()
     if not embedding_model:

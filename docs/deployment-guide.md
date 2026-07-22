@@ -65,6 +65,68 @@
 
 准入保护只对被接受的分析启动计数：同一商品存在 pending/running 任务时返回 409；共享工作区达到活跃任务上限或速率上限时返回 429。单进程锁与单副本配置共同防止并发创建；`RUN_WORKER_COUNT=1` 限制实际后台模型工作数。重启时最多恢复 `ANALYSIS_MAX_ACTIVE_RUNS` 个 pending 任务。
 
+### 3.1 真实分析的 Railway 前置项
+
+前后端、共享访问码和 health 已连通并不代表 real mode 已准备完成。real 请求在进入后台队列前还会检查模型、Chroma、Embedding、Git LFS 源文件和 peer SQLite cache。混合 provider 的最小配置为：
+
+```env
+RAG_USE_CHROMA=true
+EMBEDDING_MODEL=text-embedding-v4
+PEER_CACHE_DIR=/data/peer-cache
+RAG_MANIFEST_PATH=/data/index-manifest.sqlite
+TRADE_TARIFF_DB_PATH=/data/tariff-rules.sqlite
+PEER_METADATA_PATH=data/filtered/meta_pet_supplies_prefiltered.jsonl
+PEER_REVIEWS_PATH=data/filtered/pet_supplies_reviews_prefiltered.jsonl
+```
+
+并同时设置非空的 `DEEPSEEK_API_KEY`、`QWEN_API_KEY`、`MODEL_ANALYSIS`、`MODEL_FAST`、`MODEL_REPORT`、`MODEL_VISION`。真实值只放 Railway Variables；不要放入命令、日志或前端变量。若访问码或模型密钥曾出现在聊天、工单或终端历史中，先在对应平台轮换，再重新部署。
+
+当前路由不依据模型名字猜 provider：`MODEL_ANALYSIS` 使用 DeepSeek；当 Qwen 凭证存在时，`MODEL_REPORT`、`MODEL_FAST` 使用 Qwen，视觉始终使用 Qwen；`text-embedding-*` 使用 Qwen-compatible Embedding。`real_model_configured` 只表示四个文本 Agent 的模型入口可构造，不替代 RAG、Embedding 和数据检查。
+
+在挂载 `/data` 的运行中 Railway service shell 里执行以下只读检查。输出只包含变量是否非空以及文件状态，不打印密钥：
+
+```bash
+python - <<'PY'
+import os
+from pathlib import Path
+
+for name in (
+    "DEEPSEEK_API_KEY", "QWEN_API_KEY", "DEEPSEEK_BASE_URL", "QWEN_BASE_URL",
+    "MODEL_ANALYSIS", "MODEL_FAST", "MODEL_REPORT", "MODEL_VISION",
+    "EMBEDDING_MODEL", "RAG_USE_CHROMA",
+):
+    print(f"{name}: {'set' if os.getenv(name, '').strip() else 'missing'}")
+
+for value in (
+    "data/filtered/meta_pet_supplies_prefiltered.jsonl",
+    "data/filtered/pet_supplies_reviews_prefiltered.jsonl",
+):
+    path = Path(value)
+    pointer = path.is_file() and path.read_bytes()[:128].startswith(
+        b"version https://git-lfs.github.com/spec/v1"
+    )
+    print(f"{value}: exists={path.is_file()} size={path.stat().st_size if path.is_file() else 0} lfs_pointer={pointer}")
+PY
+```
+
+两个源文件必须 `exists=True`、size 大于 LFS pointer 大小且 `lfs_pointer=False`。若仍是 pointer，应先让部署构建取得 Git LFS 实体；不要用 pointer 构建 cache。随后在同一个已挂载 Volume 的运行环境中显式准备可复用 cache：
+
+```bash
+python scripts/prepare_peer_data.py \
+  --metadata-input data/filtered/meta_pet_supplies_prefiltered.jsonl \
+  --reviews-input data/filtered/pet_supplies_reviews_prefiltered.jsonl \
+  --cache-dir /data/peer-cache
+
+python scripts/import_us_hts_tariffs.py \
+  --input data/raw/us_hts_2026_rev11.csv \
+  --normalized-output /data/us_hts_tariffs.jsonl \
+  --database-output /data/tariff-rules.sqlite
+```
+
+这些命令不会删除 `/data`、业务 SQLite 或已有 Chroma。online real workflow 会把每次选中的 peer 文档写入 `/data/chroma`，因此首次 real run 不要求预先重建全量 Chroma；`RAG_MANIFEST_PATH` 只由显式批量 RAG 索引 CLI 使用。若指定 `us-tariff-provider` 而 tariff 数据尚未准备，运行结果会记录 `background_provider_unavailable` data gap，不再静默伪装为已有背景数据。
+
+变量和 cache 准备完成后再启动一个最小 real run，检查：创建接口返回 202；timeline 依次进入 peer matching、RAG 和四个 Agent 节点；四个 Agent 均为 production 且 `real_model_called=true`；provider/model_name 分别对应当前配置；报告可读取。任何失败都应在 timeline 的失败节点和 Railway 日志中定位，且 `fallback_used=false`。在确实拿到可访问报告前，不得宣称线上真实调用成功。
+
 ### 后端验证
 
 以下命令中的地址必须替换为平台真实生成并已打开的 staging 地址。输入访问码时不要打印或写入脚本：
@@ -109,7 +171,7 @@ Vercel 真实 Preview URL 生成后，把其完整 origin 加入 Railway `CORS_A
 | Peer cache / manifest | `/data/peer-cache`、`/data/index-manifest.sqlite` | 保留 |
 | Tariff 数据 | `/data/tariff-rules.sqlite` | 保留 |
 
-两个 Git LFS 数据文件体积较大。只有确认 Railway 容器中不是 LFS pointer，并完成索引和模型供应商验证后，才可开放真实分析。Volume 在 build/pre-deploy 阶段不可用，数据准备必须在已挂载 Volume 的运行环境中显式执行。
+两个 Git LFS 数据文件体积较大。只有确认 Railway 容器中不是 LFS pointer，并完成 peer cache 和模型供应商验证后，才可开放真实分析。Volume 在 build/pre-deploy 阶段不可用，数据准备必须在已挂载 Volume 的运行环境中显式执行。
 
 ## 6. 演示数据备份、重置和恢复
 
