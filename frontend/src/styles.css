@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Press+Start+2P&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;800&family=Press+Start+2P&display=swap');
 
 :root {
   font-family: 'Fira Sans', 'Microsoft YaHei', system-ui, sans-serif;
@@ -2997,3 +2997,347 @@ select,
 .page-agents .timeline-grid small { font-size: 12px; line-height: 1.55; }
 .page-agents .timeline-grid time { font-size: 11px; color: var(--insight-plum); }
 .page-agents .empty-inline { font-size: 13px; }
+
+/* Business-first readability pass. All visible supporting text stays at a
+   comfortable size and uses explicit high-contrast theme colors. */
+:root { font-family: 'Noto Sans SC','Inter','Microsoft YaHei',system-ui,sans-serif; }
+body,
+button,
+input,
+textarea,
+select { font-family: 'Noto Sans SC','Inter','Microsoft YaHei',system-ui,sans-serif; }
+.theme-workspace {
+  --page-muted: #44515d;
+  --ink-muted: #44515d;
+  --ink-faint: #586775;
+}
+.theme-agents {
+  --page-muted: #5d414c;
+  --ink-muted: #5d414c;
+  --ink-faint: #6c4c58;
+}
+.theme-decision {
+  --page-muted: #58463a;
+  --ink-muted: #58463a;
+  --ink-faint: #695346;
+}
+.theme-audit {
+  --page-muted: #e1eaf4;
+  --ink-muted: #e1eaf4;
+  --ink-faint: #cbd9e8;
+  --green: #78e0bd;
+  --amber: #ffd37a;
+  --red: #ff9aa5;
+  --blue-bright: #acd2fb;
+}
+.app-shell { font-size: 16px; line-height: 1.6; }
+.app-shell small,
+.app-shell time,
+.app-shell dt,
+.app-shell .micro-label,
+.app-shell .nav-caption,
+.app-shell .build-label {
+  color: var(--page-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  letter-spacing: 0;
+}
+.page-header { gap: 28px; }
+.page-header h1 { color: var(--page-text); font-size: clamp(46px,5vw,76px); font-weight: 800; }
+.page-header p { color: var(--page-muted); font-size: clamp(18px,1.3vw,21px); line-height: 1.7; }
+.panel-heading h2,
+.section-title h2,
+.workflow-title h2,
+.history-panel-heading h2 { color: var(--page-text); font-size: clamp(23px,2vw,32px); }
+.panel-heading p,
+.history-panel-heading p,
+.customer-service-head p { color: var(--page-muted); font-size: 14px; line-height: 1.65; }
+.sidebar-nav a strong { font-size: 16px; }
+.sidebar-nav a small,
+.nav-caption,
+.build-label { font-size: 13px; }
+.breadcrumb strong,
+.real-badge,
+.system-state,
+.status-pill { font-size: 14px; }
+.product-form label > span,
+.combobox-field > label > span,
+.history-search > span,
+.customer-composer > label,
+.history-agent-composer > label { color: var(--page-text); font-size: 15px; }
+.product-form label small,
+.combobox-field > small { color: var(--page-muted); font-size: 13px; }
+input,
+textarea,
+select,
+.combobox-trigger { color: var(--page-text); font-size: 16px; line-height: 1.55; }
+.primary-button,
+.compact-button,
+.history-refresh { font-size: 15px; }
+.real-notice strong,
+.connection-card strong,
+.run-stage strong,
+.run-progress strong { color: var(--page-text); font-size: 15px; }
+.real-notice small,
+.connection-card small,
+.run-stage span,
+.run-progress span { color: var(--page-muted); font-size: 13px; }
+.mini-process strong { color: var(--page-text); font-size: 15px; }
+.mini-process small { color: var(--page-muted); font-size: 13px; }
+.flow-agent-card h3,
+.serial-agent h3 { color: var(--page-text); font-size: 20px; }
+.flow-agent-card > p,
+.serial-agent p,
+.strategy-card li,
+.audit-issues p,
+.guardrail-grid p,
+.impact-list p,
+.tariff-evidence-list p { color: var(--page-muted); font-size: 14px; line-height: 1.7; }
+.agent-state,
+.agent-metrics span,
+.agent-metrics b,
+.serial-meta > small,
+.timeline-grid strong,
+.timeline-grid small,
+.timeline-grid time,
+.section-title > span,
+.report-node strong,
+.strategy-signal span,
+.strategy-signal small,
+.evidence-list-copy strong,
+.evidence-list-copy small,
+.evidence-list-copy p,
+.tariff-source-meta dt,
+.tariff-source-meta dd,
+.tariff-evidence-list small { font-size: 13px; line-height: 1.55; }
+.report-paper p,
+.report-paper li,
+.history-report-paper p,
+.history-report-paper li { color: #26313c; font-size: 15px; line-height: 1.85; }
+.report-paper h1,
+.history-report-paper h1 { color: #18222d; font-size: 30px; }
+.report-paper h2,
+.history-report-paper h2 { color: #233140; font-size: 23px; }
+.report-paper h3,
+.history-report-paper h3 { color: #2c3b4b; font-size: 18px; }
+.report-toolbar span,
+.history-document-meta strong,
+.history-document-meta em,
+.history-statbar small,
+.history-family-copy small,
+.history-family-copy em,
+.history-edit-context small,
+.personality-picker button small,
+.history-personality-picker button small,
+.customer-message small,
+.customer-message p,
+.assistant-welcome p,
+.pending-questions small,
+.customer-action-card,
+.history-agent-composer > div > small,
+.customer-composer > small { font-size: 13px; line-height: 1.6; }
+.history-family-copy strong,
+.history-statbar strong,
+.assistant-welcome strong,
+.history-edit-context strong { font-size: 15px; }
+.empty-inline,
+.history-empty p,
+.history-document-empty p,
+.history-agent-empty p,
+.report-placeholder p,
+.tariff-placeholder p { color: var(--page-muted); font-size: 14px; line-height: 1.7; }
+
+@media (max-width: 720px) {
+  .page-header h1 { font-size: clamp(36px,11vw,50px); }
+  .page-header p { font-size: 17px; }
+  .app-shell small,
+  .app-shell time,
+  .app-shell dt { font-size: 13px; }
+}
+
+/* Interaction & visual polish pass
+   A compact motion rhythm, an 8px spacing grid and four deliberate elevation
+   levels keep the four Agent themes distinct without changing their structure. */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+  --motion-fast: 160ms;
+  --motion-base: 220ms;
+  --motion-slow: 320ms;
+  --motion-spring: cubic-bezier(.2,.82,.2,1);
+}
+
+.app-shell {
+  --shadow-color: color-mix(in srgb,var(--page-button) 20%,rgba(21,31,43,.22));
+  --elevation-1: 0 1px 2px rgba(17,24,39,.05), 0 4px 12px color-mix(in srgb,var(--shadow-color) 30%,transparent);
+  --elevation-2: 0 2px 4px rgba(17,24,39,.06), 0 10px 26px color-mix(in srgb,var(--shadow-color) 45%,transparent);
+  --elevation-3: 0 5px 12px rgba(17,24,39,.08), 0 20px 44px color-mix(in srgb,var(--shadow-color) 58%,transparent);
+  --elevation-focus: 0 0 0 3px color-mix(in srgb,var(--page-button) 24%,transparent), 0 14px 32px color-mix(in srgb,var(--shadow-color) 48%,transparent);
+}
+
+.content-stage { padding: clamp(var(--space-5),3.5vw,var(--space-8)); }
+.page-view,
+.page-hub { gap: var(--space-6); }
+.workspace-layout,
+.history-workbench { gap: clamp(var(--space-4),2vw,var(--space-6)); }
+.strategy-grid,
+.timeline-grid,
+.guardrail-grid,
+.parallel-agents { gap: var(--space-4); }
+
+.glass-panel,
+.product-form,
+.launch-brief,
+.workflow-canvas,
+.timeline-panel,
+.strategy-card,
+.report-shell,
+.history-library,
+.history-document-panel,
+.history-agent-panel,
+.history-archive {
+  box-shadow: var(--elevation-2);
+  transition:
+    border-color var(--motion-base) ease,
+    box-shadow var(--motion-slow) var(--motion-spring),
+    background-color var(--motion-slow) ease;
+}
+
+.product-form,
+.workflow-canvas,
+.timeline-panel,
+.report-shell,
+.history-library,
+.history-document-panel,
+.history-agent-panel { padding: clamp(var(--space-5),2.2vw,var(--space-7)); }
+
+/* Tactile actions: instant press feedback, restrained lift and a soft light pass. */
+:is(.primary-button,.compact-button,.assistant-launch-button,.history-refresh,.combobox-trigger,.file-drop,.section-switcher > button,.history-archive-toggle) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transform: translateZ(0);
+  transition:
+    transform var(--motion-fast) var(--motion-spring),
+    box-shadow var(--motion-base) ease,
+    border-color var(--motion-base) ease,
+    background-color var(--motion-base) ease,
+    color var(--motion-fast) ease;
+}
+
+:is(.primary-button,.compact-button,.assistant-launch-button,.history-refresh)::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -80% -30%;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(110deg,transparent 32%,rgba(255,255,255,.42) 48%,transparent 64%);
+  transform: translate3d(-42%,0,0) rotate(5deg);
+  transition: transform 520ms var(--motion-spring),opacity var(--motion-fast) ease;
+}
+
+:is(.primary-button,.compact-button,.assistant-launch-button,.history-refresh):hover {
+  transform: translate3d(0,-2px,0);
+  box-shadow: var(--elevation-2);
+}
+:is(.primary-button,.compact-button,.assistant-launch-button,.history-refresh):hover::after {
+  opacity: 1;
+  transform: translate3d(42%,0,0) rotate(5deg);
+}
+:is(.primary-button,.compact-button,.assistant-launch-button,.history-refresh):active {
+  transform: translate3d(0,1px,0) scale(.985);
+  box-shadow: var(--elevation-1);
+  transition-duration: 80ms;
+}
+:is(button,a,[role='button']):focus-visible {
+  outline: 2px solid var(--page-button);
+  outline-offset: 3px;
+}
+
+/* Navigation keeps spatial continuity: the selected Agent feels anchored. */
+.nav-link {
+  transition:
+    transform var(--motion-base) var(--motion-spring),
+    background-color var(--motion-base) ease,
+    border-color var(--motion-base) ease,
+    box-shadow var(--motion-slow) ease;
+}
+.nav-link:hover { transform: translate3d(4px,0,0); box-shadow: var(--elevation-1); }
+.nav-link:active { transform: translate3d(2px,0,0) scale(.99); }
+.nav-link.active { box-shadow: var(--elevation-2); }
+.nav-link > svg { transition: transform var(--motion-base) var(--motion-spring),color var(--motion-base) ease; }
+.nav-link:hover > svg { transform: translate3d(0,-1px,0) scale(1.08) rotate(-3deg); }
+.sidebar-toggle svg,
+.mobile-sidebar-toggle svg { transition: transform var(--motion-slow) var(--motion-spring); }
+.sidebar-toggle:hover svg,
+.mobile-sidebar-toggle:hover svg { transform: rotate(-8deg) scale(1.08); }
+
+/* Form controls respond without moving surrounding content. */
+:is(input,textarea,select,.combobox-trigger) {
+  box-shadow: inset 0 1px 2px rgba(17,24,39,.035);
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-base) ease,
+    background-color var(--motion-base) ease;
+}
+:is(input,textarea,select,.combobox-trigger):hover { border-color: color-mix(in srgb,var(--page-button) 58%,var(--page-border)); }
+:is(input,textarea,select,.combobox-trigger):focus,
+.searchable-combobox.is-open input { box-shadow: var(--elevation-focus); }
+.combobox-toggle svg { transition: transform var(--motion-base) var(--motion-spring); }
+.searchable-combobox.is-open .combobox-toggle svg { transform: rotate(180deg); }
+.combobox-popover { transform-origin: top center; animation: polished-popover-in var(--motion-base) var(--motion-spring) both; box-shadow: var(--elevation-3); }
+
+/* Inspectable units share one hover language and retain their theme identity. */
+:is(.flow-agent-card,.serial-agent,.strategy-card,.timeline-grid > li,.review-boundary-card,.guardrail-grid > article,.history-family-list > button,.history-version-strip > button,.report-node) {
+  box-shadow: var(--elevation-1);
+}
+:is(.flow-agent-card,.serial-agent,.strategy-card,.timeline-grid > li,.review-boundary-card,.guardrail-grid > article,.history-family-list > button,.history-version-strip > button,.report-node):hover {
+  transform: translate3d(0,-5px,0) scale(1.006);
+  box-shadow: var(--elevation-3);
+}
+:is(.history-family-list > button,.history-version-strip > button,.report-node):active {
+  transform: translate3d(0,-1px,0) scale(.99);
+  box-shadow: var(--elevation-1);
+}
+
+.connection,
+.real-notice,
+.status-pill,
+.system-state { box-shadow: var(--elevation-1); }
+.connection-dot,
+.system-state > i,
+.real-badge > i { box-shadow: 0 0 0 0 color-mix(in srgb,currentColor 38%,transparent); }
+
+@keyframes polished-popover-in {
+  from { opacity: 0; transform: translate3d(0,-8px,0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+}
+
+@media (max-width: 720px) {
+  .content-stage { padding: var(--space-4) var(--space-4) var(--space-7); }
+  .page-view,
+  .page-hub { gap: var(--space-5); }
+  .product-form,
+  .workflow-canvas,
+  .timeline-panel,
+  .report-shell,
+  .history-library,
+  .history-document-panel,
+  .history-agent-panel { padding: var(--space-4); }
+  .nav-link:hover,
+  :is(.flow-agent-card,.serial-agent,.strategy-card,.timeline-grid > li,.review-boundary-card,.guardrail-grid > article):hover { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.primary-button,.compact-button,.assistant-launch-button,.history-refresh)::after { display: none; }
+  .combobox-popover { animation: none !important; }
+  :is(.primary-button,.compact-button,.assistant-launch-button,.history-refresh,.nav-link):hover,
+  :is(.flow-agent-card,.serial-agent,.strategy-card,.timeline-grid > li,.review-boundary-card,.guardrail-grid > article,.history-family-list > button,.history-version-strip > button,.report-node):hover { transform: none; }
+}

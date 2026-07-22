@@ -356,8 +356,7 @@ function ParticleField() {
   )
 }
 
-function PageHeader({ eyebrow, title, description, action }: {
-  eyebrow: string
+function PageHeader({ title, description, action }: {
   title: string
   description: string
   action?: ReactNode
@@ -365,7 +364,6 @@ function PageHeader({ eyebrow, title, description, action }: {
   return (
     <header className="page-header">
       <div>
-        <span className="eyebrow">{eyebrow}</span>
         <h1>{title}</h1>
         <p>{description}</p>
       </div>
@@ -651,7 +649,9 @@ function App() {
     && activeHistoryItem.report_id === selectedVersionReportId
 
   const navigate = (target: PageKey) => {
-    window.location.assign(`#${target}`)
+    if (window.location.hash !== `#${target}`) {
+      window.history.pushState(null, '', `#${target}`)
+    }
     startPageTransition(target)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -800,10 +800,8 @@ function App() {
   const renderWorkspace = () => (
     <div className="page-view page-workspace">
       <PageHeader
-        eyebrow="A01 · PRODUCT MARKET AGENT"
         title="商品市场与任务创建"
-        description="用新品资料建立真实分析任务，并为商品市场 Agent 准备同类商品、价格、RAG 与税则数据。"
-        action={<span className="real-badge"><i /> REAL MODE ONLY</span>}
+        description="填写待上市商品和目标市场信息，系统将匹配同类商品并生成跨境运营分析。"
       />
 
       <section className="workspace-layout">
@@ -816,7 +814,7 @@ function App() {
 
           <div className="real-notice">
             <span><Lightning weight="fill" /></span>
-            <div><strong>真实模型链路</strong><small>MiniMax-M3 · Qwen Embedding · Qwen3-VL · 同类数据 · 美国 HTS</small></div>
+            <div><strong>基于真实资料分析</strong><small>分析将参考同类商品、用户评论和目标市场税则资料。</small></div>
           </div>
 
           <div className="field-grid two-columns">
@@ -900,7 +898,6 @@ function App() {
             <div className="radar-rings"><span /><span /><span /></div>
             <img src="/tradepilot-team-logo.png" alt="TradePilot 四位 Agent 团队 Logo" />
           </div>
-          <span className="eyebrow">页面使用说明</span>
           <h2>填写商品信息，创建跨境运营分析</h2>
           <p>本页面用于提交待上市商品与目标市场信息。填写得越完整，系统匹配的同类商品和生成的运营建议就越准确。</p>
           <ol className="mini-process">
@@ -910,7 +907,7 @@ function App() {
           </ol>
           <div className={`connection-card ${connected === false ? 'offline' : ''}`}>
             <i />
-            <div><strong>{connected === null ? '正在检查真实链路' : connected ? '真实链路已就绪' : '后端暂未连接'}</strong><small>{connected ? '接口与工作流元数据连接正常' : '请先启动 FastAPI 服务'}</small></div>
+            <div><strong>{connected === null ? '正在连接系统' : connected ? '系统已经就绪' : '系统暂未连接'}</strong><small>{connected ? '现在可以创建商品分析任务。' : '请稍后重试或联系管理员。'}</small></div>
           </div>
         </aside>
       </section>
@@ -926,16 +923,15 @@ function App() {
   const renderAgents = () => (
     <div className="page-view page-agents">
       <PageHeader
-        eyebrow="A02 · USER INSIGHT AGENT"
-        title="用户洞察与 Agent 协作"
-        description="查看同类用户洞察如何与市场信号并行汇聚，再交给运营决策与证据审校。"
+        title="用户洞察与分析进度"
+        description="查看市场分析、用户需求、运营建议和证据审校的实时进度与结果。"
         action={<span className={`status-pill status-${runStatus || 'pending'}`}>{statusIcon(runStatus || 'pending')}{runStatus ? statusText(runStatus) : '等待任务'}</span>}
       />
 
       <section className="run-command glass-panel" aria-live="polite">
         <div className="run-identity">
           <span className="signal-icon"><Pulse weight="bold" /></span>
-          <div><span className="micro-label">CURRENT RUN</span><strong>{runId ? runId.toUpperCase() : '尚未创建任务'}</strong></div>
+          <div><strong>{runId ? `分析任务 ${runId.toUpperCase()}` : '尚未创建分析任务'}</strong></div>
         </div>
         <div className="run-stage"><span>当前节点</span><strong>{currentStageName || '等待任务输入'}</strong></div>
         <div className="run-progress">
@@ -946,11 +942,11 @@ function App() {
       </section>
 
       <section className="workflow-canvas glass-panel" aria-labelledby="workflow-heading">
-        <div className="workflow-title"><div><span className="eyebrow">EXECUTION GRAPH</span><h2 id="workflow-heading">证据驱动的协作链路</h2></div><span className="flow-legend"><i /> 实时数据流</span></div>
+        <div className="workflow-title"><div><h2 id="workflow-heading">分析处理流程</h2></div><span className="flow-legend"><i /> 实时更新</span></div>
         <div className={`agent-flow ${runActive ? 'is-running' : ''}`}>
           <div className={`prep-node status-${stageMap.get('statistics_provider')?.status || 'pending'}`}>
             <span><Database weight="duotone" /></span>
-            <div><small>DATA PREP</small><strong>同类数据、RAG 与 HTS 税则准备</strong></div>
+            <div><strong>正在准备同类商品、用户评论和税则资料</strong></div>
             <b>{statusIcon(stageMap.get('statistics_provider')?.status)}</b>
           </div>
           <div className="flow-line line-down"><i /></div>
@@ -962,7 +958,6 @@ function App() {
               return (
                 <article className={`flow-agent-card ${definition.className} status-${status}`} key={definition.key}>
                   <div className="agent-card-head"><span className="agent-avatar"><Icon weight="bold" /></span><span className={`agent-state status-${status}`}>{statusIcon(status)} {statusText(status)}</span></div>
-                  <small>{definition.sequence} · {definition.short}</small>
                   <h3>{definition.name}</h3>
                   <p>{agent?.output_summary || definition.detail}</p>
                   <div className="agent-metrics"><span>耗时 <b>{formatDuration(agent?.duration_ms)}</b></span><span>证据 <b>{agent?.evidence_ids.length || 0}</b></span><span>调用 <b>{agent?.model_call_count || 0}</b></span></div>
@@ -978,7 +973,7 @@ function App() {
               <div className="serial-step" key={definition.key}>
                 <article className={`serial-agent ${definition.className} status-${status}`}>
                   <span className="agent-avatar"><Icon weight="bold" /></span>
-                  <div><small>{definition.sequence} · {definition.short}</small><h3>{definition.name}</h3><p>{agent?.output_summary || definition.detail}</p></div>
+                  <div><h3>{definition.name}</h3><p>{agent?.output_summary || definition.detail}</p></div>
                   <div className="serial-meta"><span className={`agent-state status-${status}`}>{statusIcon(status)} {statusText(status)}</span><small>{formatDuration(agent?.duration_ms)} · {agent?.evidence_ids.length || 0} 条证据</small></div>
                 </article>
                 {index === 0 && <div className="flow-line line-down"><i /></div>}
@@ -988,17 +983,17 @@ function App() {
           <div className="flow-line line-down"><i /></div>
           <div className="output-nodes">
             <button className={`report-node status-${report ? 'succeeded' : 'pending'}`} onClick={() => openDecision('strategy')}>
-              <Megaphone weight="duotone" /><span><small>STRATEGY</small><strong>查看上市营销策略</strong></span><ArrowRight weight="bold" />
+              <Megaphone weight="duotone" /><span><strong>查看上市营销策略</strong></span><ArrowRight weight="bold" />
             </button>
             <button className={`report-node status-${report ? 'succeeded' : 'pending'}`} onClick={() => openDecision('report')}>
-              <FileText weight="duotone" /><span><small>REPORT</small><strong>查看 Markdown 决策报告</strong></span><ArrowRight weight="bold" />
+              <FileText weight="duotone" /><span><strong>查看完整分析报告</strong></span><ArrowRight weight="bold" />
             </button>
           </div>
         </div>
       </section>
 
       <section className="timeline-panel glass-panel">
-        <div className="section-title"><div><span className="eyebrow">SYSTEM TIMELINE</span><h2>完整节点时间线</h2></div><span>{completedCount} / {stageCount} 节点完成</span></div>
+        <div className="section-title"><div><h2>分析任务时间线</h2></div><span>{completedCount} / {stageCount} 项完成</span></div>
         <ol className="timeline-grid">
           {(workflow?.nodes || []).map((node) => {
             const stage = stageMap.get(node.node_name)
@@ -1029,7 +1024,6 @@ function App() {
     return (
       <div className="page-view page-strategy">
         <PageHeader
-          eyebrow="LAUNCH MARKETING SYSTEM"
           title="新品上市营销策略"
           description="把同类商品与评论证据转化为可执行的客群、价值、定价、渠道、传播和上市动作。"
           action={<span className={`status-pill ${strategyReady ? 'status-pass' : 'status-pending'}`}>{statusIcon(strategyReady ? 'pass' : 'pending')}{strategyReady ? '策略已生成' : '等待决策 Agent'}</span>}
@@ -1039,18 +1033,17 @@ function App() {
             <section className="strategy-hero glass-panel">
               <div className="strategy-orbit" aria-hidden="true"><Megaphone weight="duotone" /><i /><i /></div>
               <div className="strategy-hero-copy">
-                <span className="eyebrow">MARKETING OBJECTIVE</span>
                 <h2>{marketingStrategy?.marketing_objective || '围绕已验证的目标客群与价值主张建立首发认知。'}</h2>
                 <div className="positioning-statement"><Compass weight="duotone" /><div><small>市场定位</small><p>{marketingStrategy?.positioning || '当前证据不足，暂未形成明确市场定位。'}</p></div></div>
               </div>
-              <div className="strategy-signal"><span>STRATEGY SIGNAL</span><strong>{strategyCards.reduce((total, card) => total + card.items.length, 0)}</strong><small>条证据约束策略</small></div>
+              <div className="strategy-signal"><span>策略建议</span><strong>{strategyCards.reduce((total, card) => total + card.items.length, 0)}</strong><small>条</small></div>
             </section>
             <section className="strategy-grid">
               {strategyCards.map((card, index) => {
                 const Icon = card.icon
                 return (
                   <article className={`glass-panel strategy-card tone-${card.tone}`} key={card.key}>
-                    <div className="strategy-card-head"><span><Icon weight="duotone" /></span><small>{String(index + 1).padStart(2, '0')} · {card.caption}</small></div>
+                    <div className="strategy-card-head"><span><Icon weight="duotone" /></span><small>{String(index + 1).padStart(2, '0')}</small></div>
                     <h2>{card.label}</h2>
                     {card.items.length ? <ul>{card.items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}><i />{item}</li>)}</ul> : <p className="strategy-empty">证据或输入不足，暂不生成确定性策略。</p>}
                   </article>
@@ -1062,7 +1055,6 @@ function App() {
         ) : (
           <section className="report-placeholder glass-panel">
             <div className="placeholder-orbit"><Megaphone weight="thin" /><span /><span /></div>
-            <span className="eyebrow">STRATEGY STANDBY</span>
             <h2>运营决策 Agent 将生成完整营销策略</h2>
             <p>新版策略包含营销目标、市场定位、目标客群、价值主张、定价、渠道、传播信息和上市动作。</p>
             <button className="primary-button compact" onClick={() => navigate(runId ? 'agents' : 'workspace')}>{runId ? '查看 Agent 进度' : '创建分析任务'}<ArrowRight weight="bold" /></button>
@@ -1075,7 +1067,6 @@ function App() {
   const renderEvidence = () => (
     <div className="page-view page-evidence">
       <PageHeader
-        eyebrow="TRACEABLE EVIDENCE"
         title="证据中心"
         description="使用面向用户的证据编号浏览真实商品、评论、统计和关税资料；机器 ID 仅保留在详情中用于审计。"
         action={<span className={`status-pill ${displayEvidence.length ? 'status-pass' : 'status-pending'}`}><Fingerprint weight="fill" />{displayEvidence.length} 条证据</span>}
@@ -1083,7 +1074,7 @@ function App() {
       {displayEvidence.length ? (
         <section className="evidence-workbench">
           <div className="glass-panel evidence-list-panel">
-            <div className="section-title"><div><span className="eyebrow">EVIDENCE INDEX</span><h2>报告证据索引</h2></div><span>{displayEvidence.length} ITEMS</span></div>
+            <div className="section-title"><div><h2>报告证据索引</h2></div><span>{displayEvidence.length} 条</span></div>
             <div className="evidence-list">
               {displayEvidence.map((item) => (
                 <button
@@ -1102,21 +1093,20 @@ function App() {
           <article className="glass-panel evidence-detail-panel" aria-live="polite">
             {evidenceBusy ? <div className="evidence-detail-empty"><Pulse className="spin" weight="bold" /><h2>正在读取原始证据</h2><p>从持久化证据仓库加载完整来源与元数据。</p></div> : evidenceError ? <div className="evidence-detail-empty error"><WarningCircle weight="thin" /><h2>证据读取失败</h2><p>{evidenceError}</p></div> : selectedEvidence ? (
               <>
-                <div className="evidence-detail-head"><span><Fingerprint weight="duotone" /></span><div><small>{selectedEvidenceIndex?.display_label || 'EVIDENCE DETAIL'}</small><h2>{selectedEvidenceIndex?.display_title || selectedEvidence.source_name}</h2><p>{selectedEvidenceIndex?.evidence_type_label || selectedEvidence.knowledge_type}</p></div></div>
+                <div className="evidence-detail-head"><span><Fingerprint weight="duotone" /></span><div><h2>{selectedEvidenceIndex?.display_title || selectedEvidence.source_name}</h2><p>{selectedEvidenceIndex?.evidence_type_label || selectedEvidence.knowledge_type}</p></div></div>
                 <dl className="evidence-detail-meta">
                   <div><dt>数据来源</dt><dd>{selectedEvidence.source_name}</dd></div>
                   <div><dt>知识类型</dt><dd>{selectedEvidence.knowledge_type}</dd></div>
                   <div><dt>数据模式</dt><dd>{selectedEvidence.data_origin.toUpperCase()}</dd></div>
                 </dl>
-                <div className="evidence-excerpt"><span className="eyebrow">ORIGINAL EVIDENCE</span><p>{selectedEvidence.excerpt || '原始摘录为空。'}</p></div>
+                <div className="evidence-excerpt"><strong>原始资料摘录</strong><p>{selectedEvidence.excerpt || '原始摘录为空。'}</p></div>
                 {selectedEvidence.source_uri && (/^https?:\/\//i.test(selectedEvidence.source_uri) ? <a className="evidence-source-link" href={selectedEvidence.source_uri} target="_blank" rel="noreferrer">打开原始来源 <ArrowRight weight="bold" /></a> : <div className="evidence-machine-field"><span>来源位置</span><code>{selectedEvidence.source_uri}</code></div>)}
-                <details className="evidence-metadata"><summary>查看机器审计字段</summary><div><span>evidence_id</span><code>{selectedEvidence.evidence_id}</code><span>metadata</span><pre>{JSON.stringify(selectedEvidence.metadata, null, 2)}</pre></div></details>
               </>
             ) : <div className="evidence-detail-empty"><Fingerprint weight="thin" /><h2>选择一条证据</h2><p>左侧使用友好编号展示来源，点击后可查看原始摘录和机器审计字段。</p></div>}
           </article>
         </section>
       ) : (
-        <section className="report-placeholder glass-panel"><div className="placeholder-orbit"><Fingerprint weight="thin" /><span /><span /></div><span className="eyebrow">EVIDENCE STANDBY</span><h2>报告生成后会建立证据索引</h2><p>证据中心只展示后端真实持久化的证据，不生成示例数据或模拟来源。</p><button className="primary-button compact" onClick={() => navigate(runId ? 'agents' : 'workspace')}>{runId ? '查看 Agent 进度' : '创建分析任务'}<ArrowRight weight="bold" /></button></section>
+        <section className="report-placeholder glass-panel"><div className="placeholder-orbit"><Fingerprint weight="thin" /><span /><span /></div><h2>报告生成后会建立证据索引</h2><p>这里将展示支持分析结论的商品、评论和税则资料。</p><button className="primary-button compact" onClick={() => navigate(runId ? 'agents' : 'workspace')}>{runId ? '查看分析进度' : '创建分析任务'}<ArrowRight weight="bold" /></button></section>
       )}
     </div>
   )
@@ -1124,7 +1114,6 @@ function App() {
   const renderAudit = () => (
     <div className="page-view page-audit">
       <PageHeader
-        eyebrow="EVIDENCE GOVERNANCE"
         title="证据审校中心"
         description="区分证据审校与报关归类两类复核：前者决定结论可信度，后者是正式进口前的业务合规门禁。"
         action={<span className={`status-pill status-${auditStatus}`}>{statusIcon(auditStatus)}{statusText(auditStatus)}</span>}
@@ -1132,7 +1121,6 @@ function App() {
       <section className="audit-layout">
         <div className="audit-verdict-card glass-panel">
           <div className={`verdict-symbol audit-${auditStatus}`}>{statusIcon(auditStatus)}</div>
-          <span className="eyebrow">AUDIT VERDICT</span>
           <h2>{statusText(auditStatus)}</h2>
           <p>{audit ? (evidenceAuditReviewRequired ? '证据审校发现需要人工确认的问题，请结合问题清单修正结论。' : '证据审校已经完成；报关复核状态会在下方单独展示。') : '完成四个 Agent 的真实分析后，这里会展示审校结论。'}</p>
           <dl>
@@ -1142,16 +1130,16 @@ function App() {
           </dl>
         </div>
         <div className="audit-list-card glass-panel">
-          <div className="section-title"><div><span className="eyebrow">REVIEW FINDINGS</span><h2>审校问题与建议</h2></div><ListChecks weight="duotone" /></div>
+          <div className="section-title"><div><h2>审校问题与建议</h2></div><ListChecks weight="duotone" /></div>
           {audit?.issues.length ? <ul className="audit-issues">{audit.issues.map((issue, index) => <li key={`${issue}-${index}`}><span>{String(index + 1).padStart(2, '0')}</span><p>{issue}</p></li>)}</ul> : <div className="empty-state"><ShieldCheck weight="thin" /><h3>{audit ? '没有发现审校问题' : '等待审校结果'}</h3><p>{audit ? '当前证据链未触发问题项。' : '先创建真实分析任务，审校 Agent 会在决策完成后运行。'}</p></div>}
         </div>
       </section>
       <section className="review-boundary-grid" aria-label="人工复核边界">
-        <article className={`glass-panel review-boundary-card ${evidenceAuditReviewRequired ? 'requires-review' : 'cleared'}`}><span><ShieldCheck weight="duotone" /></span><div><small>EVIDENCE AUDIT</small><h2>证据审校复核</h2><p>检查事实范围、数字、引用和假设标签，影响报告结论是否可用。</p></div><strong>{evidenceAuditReviewRequired ? '需要复核' : audit ? '已完成' : '待审校'}</strong></article>
-        <article className={`glass-panel review-boundary-card ${customsBrokerReviewRequired ? 'requires-review' : 'cleared'}`}><span><Scales weight="duotone" /></span><div><small>CUSTOMS CLASSIFICATION</small><h2>报关归类复核</h2><p>候选 HTS 和税率用于前期测算，正式进口前仍需报关行确认。</p></div><strong>{customsBrokerReviewRequired ? '需要复核' : report ? '无需额外复核' : '等待税则'}</strong></article>
+        <article className={`glass-panel review-boundary-card ${evidenceAuditReviewRequired ? 'requires-review' : 'cleared'}`}><span><ShieldCheck weight="duotone" /></span><div><h2>证据审校复核</h2><p>检查事实、数字、引用和假设，判断报告结论是否可靠。</p></div><strong>{evidenceAuditReviewRequired ? '需要复核' : audit ? '已完成' : '待审校'}</strong></article>
+        <article className={`glass-panel review-boundary-card ${customsBrokerReviewRequired ? 'requires-review' : 'cleared'}`}><span><Scales weight="duotone" /></span><div><h2>报关归类复核</h2><p>候选税号和税率用于前期测算，正式进口前仍需报关行确认。</p></div><strong>{customsBrokerReviewRequired ? '需要复核' : report ? '无需额外复核' : '等待税则'}</strong></article>
       </section>
       <section className="guardrail-panel glass-panel">
-        <div className="section-title"><div><span className="eyebrow">DECISION GUARDRAILS</span><h2>四条决策护栏</h2></div><Database weight="duotone" /></div>
+        <div className="section-title"><div><h2>报告可靠性检查</h2></div><Database weight="duotone" /></div>
         <div className="guardrail-grid">
           <article><span>01</span><h3>新品不是同类商品</h3><p>不把同行评论与历史表现归因到待上市新品。</p></article>
           <article><span>02</span><h3>数字必须有来源</h3><p>销量、评分、价格与比例必须能够追溯。</p></article>
@@ -1165,9 +1153,8 @@ function App() {
   const renderTariff = () => (
     <div className="page-view page-tariff">
       <PageHeader
-        eyebrow="TARIFF & LANDED COST"
         title="美国关税与选品影响"
-        description="基于最新 main 分支的本地 HTS 税则数据，展示候选税号、税率证据以及对 landed cost 和毛利的影响。"
+        description="展示候选税号、税率依据，以及关税对到岸成本和毛利的影响。"
         action={<span className={`status-pill ${tariffImpact?.manual_review_required ? 'status-warning' : tariffSnapshot ? 'status-pass' : 'status-pending'}`}>
           {statusIcon(tariffImpact?.manual_review_required ? 'warning' : tariffSnapshot ? 'pass' : 'pending')}
           {tariffImpact?.manual_review_required ? '需人工归类复核' : tariffSnapshot ? '税则证据已载入' : '等待美国市场任务'}
@@ -1179,21 +1166,21 @@ function App() {
           <section className="tariff-metrics" aria-label="关税关键指标">
             <article className="glass-panel tariff-metric primary">
               <span><Receipt weight="duotone" /></span>
-              <div><small>CANDIDATE HTS</small><strong>{tariffProfile?.hs_code || '待确定'}</strong><p>{tariffProfile?.product_scope || '尚未形成可用的税号匹配。'}</p></div>
+              <div><small>候选税号</small><strong>{tariffProfile?.hs_code || '待确定'}</strong><p>{tariffProfile?.product_scope || '尚未形成可用的税号匹配。'}</p></div>
             </article>
             <article className="glass-panel tariff-metric">
               <span><Scales weight="duotone" /></span>
-              <div><small>GENERAL RATE</small><strong>{tariffProfile?.general_rate || '未知'}</strong><p>{tariffProfile?.additional_duty_text ? '存在附加税文本，请纳入到岸成本。' : '未识别到附加税文本。'}</p></div>
+              <div><small>一般税率</small><strong>{tariffProfile?.general_rate || '未知'}</strong><p>{tariffProfile?.additional_duty_text ? '存在附加税，请纳入到岸成本。' : '未识别到附加税。'}</p></div>
             </article>
             <article className="glass-panel tariff-metric">
               <span><ShieldCheck weight="duotone" /></span>
-              <div><small>MAPPING CONFIDENCE</small><strong>{typeof tariffProfile?.confidence === 'number' ? `${Math.round(tariffProfile.confidence * 100)}%` : '未知'}</strong><p>候选归类仅用于选品前测算，不替代报关行正式意见。</p></div>
+              <div><small>归类可信度</small><strong>{typeof tariffProfile?.confidence === 'number' ? `${Math.round(tariffProfile.confidence * 100)}%` : '未知'}</strong><p>候选归类仅用于选品前测算，不替代报关行正式意见。</p></div>
             </article>
           </section>
 
           <section className="tariff-grid">
             <div className="glass-panel tariff-impact-card">
-              <div className="section-title"><div><span className="eyebrow">SELECTION IMPACT</span><h2>对选品与定价的影响</h2></div><ChartLineUp weight="duotone" /></div>
+              <div className="section-title"><div><h2>对选品与定价的影响</h2></div><ChartLineUp weight="duotone" /></div>
               {tariffImpact?.summary && <p className="tariff-summary">{tariffImpact.summary}</p>}
               {tariffImpact?.selection_impact?.length ? (
                 <ol className="impact-list">{tariffImpact.selection_impact.map((item, index) => <li key={`${item}-${index}`}><span>{String(index + 1).padStart(2, '0')}</span><p>{item}</p></li>)}</ol>
@@ -1202,7 +1189,7 @@ function App() {
             </div>
 
             <div className="glass-panel tariff-evidence-card">
-              <div className="section-title"><div><span className="eyebrow">SOURCE EVIDENCE</span><h2>税则证据链</h2></div><Database weight="duotone" /></div>
+              <div className="section-title"><div><h2>税则依据</h2></div><Database weight="duotone" /></div>
               <dl className="tariff-source-meta">
                 <div><dt>提供器</dt><dd>{tariffSnapshot?.provider || '未提供'}</dd></div>
                 <div><dt>法域</dt><dd>{tariffSnapshot?.jurisdiction || '未提供'}</dd></div>
@@ -1210,7 +1197,7 @@ function App() {
               </dl>
               {tariffEvidence.length ? <ul className="tariff-evidence-list">{tariffEvidence.map((item, index) => (
                 <li key={item.evidence_id || index}>
-                  <div><code>{item.evidence_id || `EVIDENCE-${index + 1}`}</code>{typeof item.confidence === 'number' && <span>{Math.round(item.confidence * 100)}% confidence</span>}</div>
+                  <div><code>{item.evidence_id || `证据-${index + 1}`}</code>{typeof item.confidence === 'number' && <span>可信度 {Math.round(item.confidence * 100)}%</span>}</div>
                   <p>{item.summary}</p>
                   <small>{item.source_name || '未知来源'}</small>
                 </li>
@@ -1223,9 +1210,8 @@ function App() {
       ) : (
         <section className="tariff-placeholder glass-panel">
           <div className="placeholder-orbit"><Receipt weight="thin" /><span /><span /></div>
-          <span className="eyebrow">HTS DATA STANDBY</span>
           <h2>运行一次美国市场真实分析</h2>
-          <p>系统会自动请求 <code>us-tariff-provider</code>，并把税号、税率、附加税文本和风险标记传给运营决策 Agent。</p>
+          <p>系统会查询商品税号、税率、附加税和相关风险，并将结果纳入定价与运营建议。</p>
           <button className="primary-button compact" onClick={() => navigate(runId ? 'agents' : 'workspace')}>{runId ? '查看 Agent 进度' : '创建美国市场任务'}<ArrowRight weight="bold" /></button>
         </section>
       )}
@@ -1238,7 +1224,7 @@ function App() {
       <aside className="customer-service-drawer" role="dialog" aria-modal="false" aria-labelledby="customer-service-title">
         <header className="customer-service-head">
           <span className="customer-service-avatar"><Robot weight="duotone" /></span>
-          <div><small>REPORT COPILOT</small><h2 id="customer-service-title">报告客服 AI</h2><p>解释结论、澄清需求，并在证据边界内生成增量版本。</p></div>
+          <div><h2 id="customer-service-title">报告客服 AI</h2><p>解释报告结论，并按照你的要求修改指定内容。</p></div>
           <button className="icon-button" aria-label="关闭客服 AI" onClick={() => setAssistantOpen(false)}><X weight="bold" /></button>
         </header>
 
@@ -1285,14 +1271,13 @@ function App() {
   const renderReport = () => (
     <div className="page-view page-report">
       <PageHeader
-        eyebrow="DECISION DOCUMENT"
         title="上市分析报告"
         description="四个 Agent 完成协作与审校后，系统在这里呈现可继续编辑和交付的 Markdown 报告。"
         action={<div className="report-header-actions">{report && <span className={`status-pill status-${report.audit_status}`}>{statusIcon(report.audit_status)}版本 {report.version} · {statusText(report.audit_status)}</span>}<button className="assistant-launch-button" onClick={() => setAssistantOpen(true)}><Headset weight="duotone" /><span><strong>客服 AI</strong><small>{report ? '解释或增量修改报告' : '报告生成后可用'}</small></span></button></div>}
       />
       {markdown ? (
         <section className="report-shell glass-panel">
-          <div className="report-toolbar"><div><span>REPORT ID</span><strong>{report?.report_id.toUpperCase()}</strong></div><div><span>审校状态</span><strong>{statusText(report?.audit_status)}</strong></div><div><span>格式</span><strong>MARKDOWN</strong></div></div>
+          <div className="report-toolbar"><div><span>报告编号</span><strong>{report?.report_id.toUpperCase()}</strong></div><div><span>审校状态</span><strong>{statusText(report?.audit_status)}</strong></div></div>
           <article className="report-paper"><ReactMarkdown
             skipHtml
             components={{
@@ -1310,7 +1295,6 @@ function App() {
       ) : (
         <section className="report-placeholder glass-panel">
           <div className="placeholder-orbit"><FileText weight="thin" /><span /><span /></div>
-          <span className="eyebrow">REPORT STANDBY</span>
           <h2>报告会在审校完成后生成</h2>
           <p>报告包含商品概况、同类市场、用户洞察、上市营销策略、美国关税影响和友好编号证据索引。</p>
           <button className="primary-button compact" onClick={() => navigate(runId ? 'agents' : 'workspace')}>{runId ? '查看 Agent 进度' : '创建分析任务'}<ArrowRight weight="bold" /></button>
@@ -1335,7 +1319,7 @@ function App() {
     <aside className="history-agent-panel glass-panel" aria-labelledby="history-agent-title">
       <header className="history-panel-heading agent-heading">
         <span><Robot weight="duotone" /></span>
-        <div><small>DOCUMENT COPILOT</small><h2 id="history-agent-title">客服 Agent 修改台</h2><p>对当前最新版本提出修改，系统会保留原文并生成新版本。</p></div>
+        <div><h2 id="history-agent-title">报告修改助手</h2><p>提出修改要求后，系统会保留原文并生成新版本。</p></div>
       </header>
 
       {!report ? (
@@ -1377,7 +1361,6 @@ function App() {
   const renderHistoryWorkspace = () => (
     <div className="page-view page-history">
       <PageHeader
-        eyebrow="A04 · DOCUMENT MEMORY"
         title="历史文档与智能修改"
         description="集中保存每次分析生成的报告及其不可变版本，并通过客服 Agent 在证据边界内继续修改。"
         action={<button className="compact-button history-refresh" onClick={() => void refreshReportHistory(activeHistoryItem?.report_id)} disabled={historyBusy}><ArrowsClockwise className={historyBusy ? 'spin' : ''} weight="bold" />刷新记录</button>}
@@ -1395,7 +1378,7 @@ function App() {
         <aside className="history-library glass-panel" aria-label="历史文档列表">
           <header className="history-panel-heading">
             <span><Archive weight="duotone" /></span>
-            <div><small>DOCUMENT LIBRARY</small><h2>历史记录</h2><p>按分析任务归档，最新版本置于每组顶部。</p></div>
+            <div><h2>历史记录</h2><p>按分析任务归档，最新版本置于每组顶部。</p></div>
           </header>
           <label className="history-search"><span>搜索历史文档</span><div><MagnifyingGlass weight="bold" /><input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="商品名、分类或报告 ID" /></div></label>
           <div className="history-family-list">
@@ -1413,7 +1396,7 @@ function App() {
         <section className="history-document-panel glass-panel" aria-labelledby="history-document-title">
           <header className="history-panel-heading document-heading">
             <span><FileText weight="duotone" /></span>
-            <div><small>IMMUTABLE VERSIONS</small><h2 id="history-document-title">{activeHistoryItem?.product_name || '文档预览'}</h2><p>{activeHistoryItem ? `${activeHistoryItem.product_category || '未分类'} · ${activeHistoryItem.version_count} 个不可变版本` : '选择左侧记录查看生成文档。'}</p></div>
+            <div><h2 id="history-document-title">{activeHistoryItem?.product_name || '文档预览'}</h2><p>{activeHistoryItem ? `${activeHistoryItem.product_category || '未分类'} · ${activeHistoryItem.version_count} 个历史版本` : '选择左侧记录查看生成文档。'}</p></div>
             {report && <span className={`status-pill status-${report.audit_status}`}>{statusIcon(report.audit_status)}{statusText(report.audit_status)}</span>}
           </header>
 
@@ -1422,7 +1405,7 @@ function App() {
           </nav>}
 
           {markdown ? <>
-            <div className="history-document-meta"><span><strong>REPORT ID</strong><code>{report?.report_id.slice(0, 8).toUpperCase()}</code></span><span><strong>版本时间</strong><em>{selectedHistoryVersion ? formatHistoryDate(selectedHistoryVersion.created_at) : '—'}</em></span><span><strong>修改范围</strong><em>{selectedHistoryVersion?.changed_section_ids.length ? `${selectedHistoryVersion.changed_section_ids.length} 个章节` : '原始报告'}</em></span></div>
+            <div className="history-document-meta"><span><strong>报告编号</strong><code>{report?.report_id.slice(0, 8).toUpperCase()}</code></span><span><strong>版本时间</strong><em>{selectedHistoryVersion ? formatHistoryDate(selectedHistoryVersion.created_at) : '—'}</em></span><span><strong>修改范围</strong><em>{selectedHistoryVersion?.changed_section_ids.length ? `${selectedHistoryVersion.changed_section_ids.length} 个章节` : '原始报告'}</em></span></div>
             <article className="history-report-paper"><ReactMarkdown skipHtml>{markdown}</ReactMarkdown></article>
           </> : <div className="history-document-empty"><FileText weight="thin" /><strong>选择一份历史文档</strong><p>这里会显示对应版本的完整 Markdown 内容。</p></div>}
         </section>
@@ -1462,32 +1445,30 @@ function App() {
         <ParticleField />
         <aside className="sidebar" aria-label="主导航">
           <div className="sidebar-top">
-            <a className="brand" href="#workspace" aria-label="TradePilot 任务创建页">
+            <a className="brand" href="#workspace" aria-label="TradePilot 任务创建页" onClick={(event) => { event.preventDefault(); navigate('workspace') }}>
               <span className="brand-logo-frame"><img src="/tradepilot-team-logo.png" alt="" /></span>
-              <span className="brand-copy"><strong>TradePilot</strong><small>AI COMMERCE CREW</small></span>
+              <span className="brand-copy"><strong>TradePilot</strong></span>
             </a>
             <button className="sidebar-toggle" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'} aria-expanded={!sidebarCollapsed}><SidebarSimple weight="bold" /></button>
           </div>
 
           <nav className="sidebar-nav">
-            <span className="nav-caption">FOUR AGENTS</span>
             {navigation.map((item) => {
               const Icon = item.icon
-              return <a key={item.key} className={`nav-link nav-${item.key} ${page === item.key ? 'active' : ''}`} href={`#${item.key}`} title={sidebarCollapsed ? item.label : undefined}><Icon weight={page === item.key ? 'fill' : 'regular'} /><span><strong>{item.label}</strong><small>{item.caption}</small></span><em>{item.agent}</em>{page === item.key && <i />}</a>
+              return <a key={item.key} className={`nav-link nav-${item.key} ${page === item.key ? 'active' : ''}`} href={`#${item.key}`} title={sidebarCollapsed ? item.label : undefined} onClick={(event) => { event.preventDefault(); navigate(item.key) }}><Icon weight={page === item.key ? 'fill' : 'regular'} /><span><strong>{item.label}</strong><small>{item.caption}</small></span><em>{item.agent}</em>{page === item.key && <i />}</a>
             })}
           </nav>
 
           <div className="sidebar-foot">
             <div className={`connection ${connected === false ? 'offline' : ''}`}><span className="connection-dot" /><div><strong>{connected === null ? '正在连接' : connected ? '系统在线' : '等待后端'}</strong><small>{connected ? 'Real 工作流已就绪' : '启动服务后即可分析'}</small></div></div>
-            <span className="build-label">REAL · EVIDENCE FIRST</span>
           </div>
         </aside>
 
         <main id="main-content" className="main-content">
           <header className="topbar">
             <button className="mobile-sidebar-toggle" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}><SidebarSimple weight="bold" /></button>
-            <div className="breadcrumb"><span>TRADEPILOT</span><b>/</b><strong>{navigation.find((item) => item.key === page)?.label}</strong></div>
-            <div className="topbar-actions"><span className="real-badge"><i /> REAL</span><span className={`system-state ${connected === false ? 'offline' : ''}`}><i />{connected ? 'API ONLINE' : connected === false ? 'API OFFLINE' : 'CONNECTING'}</span></div>
+            <div className="breadcrumb"><strong>{navigation.find((item) => item.key === page)?.label}</strong></div>
+            <div className="topbar-actions"><span className={`system-state ${connected === false ? 'offline' : ''}`}><i />{connected ? '系统可用' : connected === false ? '系统未连接' : '正在连接'}</span></div>
           </header>
           <div className={`content-stage content-stage-${page}`} key={page}>
             {page === 'workspace' && renderWorkspace()}
