@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import {
   ArrowRight,
   Archive,
@@ -22,6 +22,7 @@ import {
   ListChecks,
   MagnifyingGlass,
   Megaphone,
+  Moon,
   Package,
   PaperPlaneTilt,
   Play,
@@ -34,6 +35,7 @@ import {
   SidebarSimple,
   SignOut,
   Sparkle,
+  Heartbeat,
   Target,
   UploadSimple,
   UsersThree,
@@ -42,6 +44,10 @@ import {
   XCircle,
 } from '@phosphor-icons/react'
 import ReactMarkdown from 'react-markdown'
+import portraitOne from './1.jpg'
+import portraitTwo from './2.jpg'
+import portraitThree from './3.jpg'
+import portraitFour from './4.jpg'
 import { SearchableCombobox } from './SearchableCombobox'
 import {
   ApiRequestError,
@@ -70,6 +76,7 @@ import { productCategoryOptions, targetMarketOptions } from './catalogOptions'
 type PageKey = 'workspace' | 'agents' | 'decision' | 'audit'
 type DecisionSection = 'strategy' | 'report'
 type AuditSection = 'audit' | 'tariff' | 'evidence'
+type VisualTheme = 'snow' | 'petal' | 'linen' | 'midnight'
 
 type MarketingStrategy = {
   positioning?: string
@@ -154,6 +161,68 @@ type FormState = {
   currency: string
 }
 
+const VISUAL_THEME_STORAGE_KEY = 'tradepilot-visual-theme'
+
+const visualThemeOptions: Array<{
+  value: VisualTheme
+  label: string
+  caption: string
+  detail: string
+  available: boolean
+  previewClass: string
+  imageSrc: string
+  icon: typeof Sparkle
+}> = [
+  {
+    value: 'snow',
+    label: 'Snow White',
+    caption: 'Live now',
+    detail: 'White canvas, soft paper surfaces, calm editorial contrast.',
+    available: true,
+    previewClass: 'preview-snow',
+    imageSrc: portraitOne,
+    icon: Sparkle,
+  },
+  {
+    value: 'petal',
+    label: 'Petal Pink',
+    caption: 'Live now',
+    detail: 'Warm blush palette with softer highlights and lighter accents.',
+    available: true,
+    previewClass: 'preview-petal',
+    imageSrc: portraitTwo,
+    icon: Heartbeat,
+  },
+  {
+    value: 'linen',
+    label: 'Linen Sand',
+    caption: 'Live now',
+    detail: 'Natural beige neutrals for a calmer product presentation mood.',
+    available: true,
+    previewClass: 'preview-linen',
+    imageSrc: portraitFour,
+    icon: BookOpenText,
+  },
+  {
+    value: 'midnight',
+    label: 'Midnight Ink',
+    caption: 'Live now',
+    detail: 'Dark editorial mode with sharper contrast and subdued glow.',
+    available: true,
+    previewClass: 'preview-midnight',
+    imageSrc: portraitThree,
+    icon: Moon,
+  },
+]
+
+function readStoredVisualTheme(): VisualTheme {
+  if (typeof window === 'undefined') return 'snow'
+  const storedValue = window.localStorage.getItem(VISUAL_THEME_STORAGE_KEY)
+  return visualThemeOptions.some((option) => option.value === storedValue)
+    ? storedValue as VisualTheme
+    : 'snow'
+}
+
 const initialForm: FormState = {
   name: '轻量反光防挣脱犬用胸背带',
   category: '犬用胸背带',
@@ -211,10 +280,10 @@ const agentDefinitions = [
 ] as const
 
 const navigation: Array<{ key: PageKey; label: string; caption: string; icon: typeof Lightning; agent: string }> = [
-  { key: 'workspace', label: '商品市场', caption: '任务创建 · 白', icon: ChartLineUp, agent: 'A01' },
-  { key: 'agents', label: '用户洞察', caption: '协作流程 · 粉', icon: UsersThree, agent: 'A02' },
-  { key: 'decision', label: '运营决策', caption: '策略报告 · 棕', icon: Compass, agent: 'A03' },
-  { key: 'audit', label: '历史文档', caption: '版本协作 · 蓝', icon: Archive, agent: 'A04' },
+  { key: 'workspace', label: '商品市场', caption: '任务创建', icon: ChartLineUp, agent: 'A01' },
+  { key: 'agents', label: '用户洞察', caption: '协作流程', icon: UsersThree, agent: 'A02' },
+  { key: 'decision', label: '运营决策', caption: '策略报告', icon: Compass, agent: 'A03' },
+  { key: 'audit', label: '历史文档', caption: '版本协作', icon: Archive, agent: 'A04' },
 ]
 
 const legacyPageAliases: Record<string, PageKey> = {
@@ -380,7 +449,13 @@ function PageHeader({ title, description, action }: {
   )
 }
 
-function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
+function WorkspaceApp({
+  onLogout,
+  visualTheme,
+}: {
+  onLogout: () => void
+  visualTheme: VisualTheme
+}) {
   const [page, setPage] = useState<PageKey>(pageFromHash)
   const [themeFrom, setThemeFrom] = useState<PageKey>(pageFromHash)
   const [themeTo, setThemeTo] = useState<PageKey>(pageFromHash)
@@ -426,6 +501,7 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
   const [historyError, setHistoryError] = useState('')
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [assistantFloatPosition, setAssistantFloatPosition] = useState<{ x: number; y: number } | null>(null)
   const [personality, setPersonality] = useState<CustomerServicePersonality>('professional')
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [customerMessages, setCustomerMessages] = useState<CustomerServiceConversationMessage[]>([])
@@ -435,6 +511,8 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
   const [customerResult, setCustomerResult] = useState<CustomerServiceMessageResponse | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const assistantFloatRef = useRef<HTMLDivElement | null>(null)
+  const assistantDragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null)
 
   const startPageTransition = useCallback((nextPage: PageKey) => {
     const currentPage = pageRef.current
@@ -482,6 +560,57 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     localStorage.setItem('tradepilot-sidebar-collapsed', String(sidebarCollapsed))
   }, [sidebarCollapsed])
+
+  useEffect(() => {
+    if (page !== 'audit' && assistantOpen) setAssistantOpen(false)
+  }, [assistantOpen, page])
+
+  useEffect(() => {
+    if (!assistantOpen) {
+      assistantDragRef.current = null
+      return
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragState = assistantDragRef.current
+      if (!dragState || dragState.pointerId !== event.pointerId) return
+
+      const panelWidth = assistantFloatRef.current?.offsetWidth ?? 430
+      const panelHeight = assistantFloatRef.current?.offsetHeight ?? 640
+      const nextX = Math.min(Math.max(12, event.clientX - dragState.offsetX), Math.max(12, window.innerWidth - panelWidth - 12))
+      const nextY = Math.min(Math.max(12, event.clientY - dragState.offsetY), Math.max(12, window.innerHeight - panelHeight - 12))
+      setAssistantFloatPosition({ x: nextX, y: nextY })
+    }
+
+    const stopDragging = (event: PointerEvent) => {
+      if (assistantDragRef.current?.pointerId === event.pointerId) assistantDragRef.current = null
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', stopDragging)
+    window.addEventListener('pointercancel', stopDragging)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', stopDragging)
+      window.removeEventListener('pointercancel', stopDragging)
+    }
+  }, [assistantOpen])
+
+  const handleAssistantFloatDragStart = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (window.innerWidth <= 720) return
+    const panel = assistantFloatRef.current
+    if (!panel) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const rect = panel.getBoundingClientRect()
+    assistantDragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    }
+    setAssistantFloatPosition((current) => current ?? { x: rect.left, y: rect.top })
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -718,6 +847,13 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
     setCustomerMessages(conversation.messages)
   }
 
+  const normalizeCustomerError = (error: unknown) => {
+    if (error instanceof Error && error.message === 'Targeted customer-service regeneration requires existing report evidence bindings') {
+      return '当前报告缺少证据绑定，暂时无法做定向改写。请先生成完整可审校报告后再修改。'
+    }
+    return error instanceof Error ? error.message : '客服助手暂时无法响应。'
+  }
+
   const handleCustomerMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const message = customerInput.trim()
@@ -747,6 +883,7 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
       ])
     } catch (customerServiceError) {
       setCustomerError(customerServiceError instanceof Error ? customerServiceError.message : '客服 Agent 暂时无法响应。')
+      setCustomerError(normalizeCustomerError(customerServiceError))
       setCustomerMessages((current) => current.filter((item) => !item.message_id.startsWith('optimistic-')))
       setCustomerInput(message)
     } finally {
@@ -1323,9 +1460,12 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
     </div>
   )
 
-  const renderHistoryAgentPanel = () => (
+  const renderHistoryAgentPanel = (floating = false) => (
     <aside className="history-agent-panel glass-panel" aria-labelledby="history-agent-title">
-      <header className="history-panel-heading agent-heading">
+      <header
+        className={`history-panel-heading agent-heading${floating ? ' draggable' : ''}`}
+        onPointerDown={floating ? handleAssistantFloatDragStart : undefined}
+      >
         <span><Robot weight="duotone" /></span>
         <div><h2 id="history-agent-title">报告修改助手</h2><p>提出修改要求后，系统会保留原文并生成新版本。</p></div>
       </header>
@@ -1366,11 +1506,27 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
     </aside>
   )
 
+  const renderHistoryAssistantFloating = () => !assistantOpen ? null : (
+    <>
+      <div
+        className="history-assistant-float"
+        ref={assistantFloatRef}
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="history-agent-title"
+        style={assistantFloatPosition ? { left: `${assistantFloatPosition.x}px`, top: `${assistantFloatPosition.y}px`, right: 'auto' } : undefined}
+      >
+        <button className="icon-button history-assistant-close" aria-label="关闭报告修改助手" onClick={() => setAssistantOpen(false)}><X weight="bold" /></button>
+        {renderHistoryAgentPanel(true)}
+      </div>
+    </>
+  )
+
   const renderHistoryWorkspace = () => (
     <div className="page-view page-history">
       <PageHeader
-        title="历史文档与智能修改"
-        description="集中保存每次分析生成的报告及其不可变版本，并通过客服 Agent 在证据边界内继续修改。"
+        title="历史记录"
+        description="查看报告版本、切换历史快照；需要修改时，通过右上角客服助手发起增量修改。"
         action={<button className="compact-button history-refresh" onClick={() => void refreshReportHistory(activeHistoryItem?.report_id)} disabled={historyBusy}><ArrowsClockwise className={historyBusy ? 'spin' : ''} weight="bold" />刷新记录</button>}
       />
 
@@ -1417,8 +1573,6 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
             <article className="history-report-paper"><ReactMarkdown skipHtml>{markdown}</ReactMarkdown></article>
           </> : <div className="history-document-empty"><FileText weight="thin" /><strong>选择一份历史文档</strong><p>这里会显示对应版本的完整 Markdown 内容。</p></div>}
         </section>
-
-        {renderHistoryAgentPanel()}
       </section>
 
       <section className="history-archive glass-panel">
@@ -1438,13 +1592,13 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
   )
 
   const renderAuditHub = () => (
-    <div className="page-hub history-hub">{renderHistoryWorkspace()}</div>
+    <div className="page-hub history-hub">{renderHistoryWorkspace()}{renderHistoryAssistantFloating()}</div>
   )
 
   return (
     <>
       <a className="skip-link" href="#main-content">跳到主要内容</a>
-      <div className={`app-shell theme-${page} ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`}>
+      <div className={`app-shell skin-${visualTheme} theme-${page} ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`}>
         <div className={`theme-backdrop ${themeTransitioning ? 'is-transitioning' : ''}`} aria-hidden="true">
           <span className={`theme-bg-layer palette-${themeFrom}`} />
           <span className={`theme-bg-layer theme-bg-next palette-${themeTo}`} />
@@ -1479,6 +1633,7 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
             <div className="topbar-actions">
               <span className="shared-workspace-label">内部演示 · 共享工作区</span>
               <span className={`system-state ${connected === false ? 'offline' : ''}`}><i />{connected ? '系统可用' : connected === false ? '系统未连接' : '正在连接'}</span>
+              {page === 'audit' && <button className="topbar-icon-button" type="button" aria-label="打开报告修改助手" onClick={() => setAssistantOpen(true)}><Headset weight="duotone" /><span>客服</span></button>}
               <button className="demo-logout-button" type="button" onClick={() => { clearSharedAccessCode(); onLogout() }}><SignOut weight="bold" />退出演示环境</button>
             </div>
           </header>
@@ -1495,7 +1650,15 @@ function WorkspaceApp({ onLogout }: { onLogout: () => void }) {
   )
 }
 
-function AccessGate({ onAuthenticated }: { onAuthenticated: () => void }) {
+function AccessGate({
+  onAuthenticated,
+  visualTheme,
+  onThemeChange,
+}: {
+  onAuthenticated: () => void
+  visualTheme: VisualTheme
+  onThemeChange: (theme: VisualTheme) => void
+}) {
   const [accessCode, setAccessCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -1522,7 +1685,7 @@ function AccessGate({ onAuthenticated }: { onAuthenticated: () => void }) {
   }
 
   return (
-    <main className="access-gate">
+    <main className={`access-gate skin-${visualTheme}`}>
       <section className="access-card" aria-labelledby="access-title">
         <div className="access-brand">
           <span className="brand-logo-frame"><img src="/tradepilot-team-logo.png" alt="" /></span>
@@ -1533,6 +1696,48 @@ function AccessGate({ onAuthenticated }: { onAuthenticated: () => void }) {
           <div><p>项目成员访问</p><h1 id="access-title">进入共享演示工作区</h1></div>
         </div>
         <p className="access-notice">内部演示环境，项目成员共享记录与记忆。</p>
+        <section className="access-theme-picker" aria-labelledby="theme-picker-title">
+          <div className="access-theme-picker-head">
+            <div>
+              <p id="theme-picker-title">Style mode</p>
+              <h2>Choose a visual theme before entering</h2>
+            </div>
+            <span>Palette only. Layout stays unchanged.</span>
+          </div>
+          <div className="theme-option-grid" role="list" aria-label="Visual theme options">
+            {visualThemeOptions.map((option) => {
+              const Icon = option.icon
+              const selected = visualTheme === option.value
+              return (
+                <div
+                  key={option.value}
+                  className={`theme-option-item ${option.previewClass} ${selected ? 'is-selected' : ''} ${option.available ? '' : 'is-disabled'}`}
+                >
+                  <button
+                    type="button"
+                    className="theme-option-circle"
+                    aria-pressed={selected}
+                    aria-label={option.label}
+                    title={`${option.label} · ${option.caption}`}
+                    disabled={!option.available}
+                    onClick={() => onThemeChange(option.value)}
+                  >
+                    <span className="theme-option-preview" aria-hidden="true">
+                      <img src={option.imageSrc} alt="" />
+                    </span>
+                    <span className="theme-option-icon"><Icon weight="duotone" /></span>
+                  </button>
+                  <span className="theme-option-copy">
+                    <span className="theme-option-title-row">
+                      <strong>{option.label}</strong>
+                      <em>{option.caption}</em>
+                    </span>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </section>
         <form onSubmit={submit}>
           <label htmlFor="shared-access-code">共享访问码</label>
           <input
@@ -1558,6 +1763,7 @@ function AccessGate({ onAuthenticated }: { onAuthenticated: () => void }) {
 
 function App() {
   const [authenticated, setAuthenticated] = useState(hasSharedAccessCode)
+  const [visualTheme, setVisualTheme] = useState<VisualTheme>(readStoredVisualTheme)
 
   useEffect(() => {
     const handleAccessCleared = () => setAuthenticated(false)
@@ -1565,9 +1771,13 @@ function App() {
     return () => window.removeEventListener(ACCESS_CLEARED_EVENT, handleAccessCleared)
   }, [])
 
+  useEffect(() => {
+    window.localStorage.setItem(VISUAL_THEME_STORAGE_KEY, visualTheme)
+  }, [visualTheme])
+
   return authenticated
-    ? <WorkspaceApp onLogout={() => setAuthenticated(false)} />
-    : <AccessGate onAuthenticated={() => setAuthenticated(true)} />
+    ? <WorkspaceApp onLogout={() => setAuthenticated(false)} visualTheme={visualTheme} />
+    : <AccessGate onAuthenticated={() => setAuthenticated(true)} visualTheme={visualTheme} onThemeChange={setVisualTheme} />
 }
 
 export default App
